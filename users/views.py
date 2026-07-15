@@ -1,38 +1,48 @@
 from rest_framework.views import APIView
+from rest_framework.generics import ListAPIView
+from rest_framework import filters, viewsets, mixins
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from .permissions import IsAdminOrSuperAdmin
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import action
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from .serializers import LoginSerializer, RegisterSerializer, SendOTPSerializer, VerifyOTPSerializer, UserSerializer, KYCProfileSerializer, ForgotPasswordSerializer, ResetPasswordSerializer
+from .serializers import LoginSerializer, RegisterSerializer, SendOTPSerializer, VerifyOTPSerializer, UserSerializer, KYCProfileSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, UserWithProfileSerializer
 from .services import login_user, refresh_tokens, logout_user
 from django.utils import timezone
 from datetime import timedelta
-from .models import OTPVerification, KYCProfile
+from django.db.models import Q
+from .models import User, OTPVerification, KYCProfile
+from django.conf import settings
 from .utils import generate_otp, send_otp_sms
 from lookup.models import Lookup
 from lookup.serializers import LookupSerializer
+from api.pagination import CustomPagination
 
 def set_auth_cookies(response, access_token, refresh_token):
     response.set_cookie(
         key='access_token',
         value=access_token,
         httponly=True,
-        secure=True,
+        secure=not settings.DEBUG,
         samesite='Lax',
-        max_age=15 * 60
+        max_age=settings.JWT_ACCESS_EXPIRATION_MINUTES * 60
     )
     response.set_cookie(
         key='refresh_token',
         value=refresh_token,
         httponly=True,
-        secure=True,
+        secure=not settings.DEBUG,
         samesite='Lax',
-        max_age=7 * 24 * 60 * 60
+        max_age=settings.JWT_REFRESH_EXPIRATION_DAYS * 24 * 60 * 60
     )
 
-class RoleListView(APIView):
+class RoleListView(ListAPIView):
     permission_classes = [AllowAny]
+    queryset = Lookup.objects.filter(is_active=True)
+    serializer_class = LookupSerializer
 
     @swagger_auto_schema(
         tags=['Authentication & Onboarding'],
@@ -40,17 +50,12 @@ class RoleListView(APIView):
         operation_description="Get all active roles from the lookup table for the registration form.",
         responses={200: LookupSerializer(many=True)}
     )
-    def get(self, request):
-        roles = Lookup.objects.filter(is_active=True)
-        serializer = LookupSerializer(roles, many=True)
-        return Response({
-            "status": "success",
-            "message": "Roles fetched successfully.",
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    parser_classes = (MultiPartParser, FormParser)
 
     @swagger_auto_schema(
         tags=['Authentication & Onboarding'],
@@ -95,7 +100,7 @@ class RegisterView(APIView):
                 "status": "success",
                 "message": "Registration successful. OTP sent to phone number.",
                 "data": {
-                    "user": UserSerializer(user).data
+                    "user": UserWithProfileSerializer(user).data
                 }
             }
             
@@ -117,8 +122,8 @@ class LoginView(APIView):
             },
             required=['phone_number', 'password'],
             example={
-                "phone_number": "01700000000",
-                "password": "admin"
+                "phone_number": "01747727132",
+                "password": "12345678"
             }
         ),
         responses={200: openapi.Response('Login successful', openapi.Schema(
@@ -147,7 +152,7 @@ class LoginView(APIView):
                 "message": "Login successful.",
                 "data": {
                     "access_token": access_token,
-                    "user": UserSerializer(user).data
+                    "user": UserWithProfileSerializer(user).data
                 }
             }
             
@@ -355,7 +360,7 @@ class VerifyOTPView(APIView):
                         "message": "Phone number verified and login successful.",
                         "data": {
                             "access_token": access_token,
-                            "user": UserSerializer(user).data
+                            "user": UserWithProfileSerializer(user).data
                         }
                     }
                     response = Response(response_data, status=status.HTTP_200_OK)
@@ -374,7 +379,7 @@ class VerifyOTPView(APIView):
 
 class KYCProfileView(APIView):
     permission_classes = [IsAuthenticated]
-
+    parser_classes = (MultiPartParser, FormParser)
     @swagger_auto_schema(
         tags=['Users'],
         operation_summary="Get KYC Profile",
@@ -443,3 +448,36 @@ class KYCProfileView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except KYCProfile.DoesNotExist:
             return Response({'detail': 'KYC profile not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+class UserViewSet(mixins.ListModelMixin,
+                  mixins.RetrieveModelMixin,
+                  mixins.UpdateModelMixin,
+                  mixins.DestroyModelMixin,
+                  viewsets.GenericViewSet):
+    permission_classes = [IsAdminOrSuperAdmin]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['phone_number', 'full_name']
+
+    def get_queryset(self):
+        return User.objects.select_related('role', 'kyc_profile').order_by('-created_at')
+
+    def get_serializer_class(self):
+        if self.action in ['list', 'retrieve', 'pending']:
+            return UserWithProfileSerializer
+        return UserSerializer
+
+    @swagger_auto_schema(
+        operation_summary="Get Pending Users",
+        operation_description="Returns a paginated list of users (is_approved=False OR is_phone_verified=False)."
+    )
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending(self, request):
+        queryset = self.filter_queryset(self.get_queryset().filter(Q(is_approved=False) | Q(is_phone_verified=False)))
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)

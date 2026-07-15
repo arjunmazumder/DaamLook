@@ -27,16 +27,25 @@ class JWTAuthentication(authentication.BaseAuthentication):
         try:
             payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=['HS256'])
         except jwt.ExpiredSignatureError:
-            raise exceptions.AuthenticationFailed('Access token expired')
+            return None
         except jwt.DecodeError:
-            raise exceptions.AuthenticationFailed('Invalid token')
+            return None
             
         user_id = payload.get('user_id')
         if not user_id:
-            raise exceptions.AuthenticationFailed('User identifier not found in JWT')
+            return None
             
-        # Stateless authentication: Return an in-memory user instance
-        # to avoid database lookups for every protected request.
-        user = User(id=user_id, phone_number=payload.get('phone_number'))
+        try:
+            # Fetch the actual user from the database so roles and permissions work
+            user = User.objects.select_related('role').get(id=user_id)
+        except User.DoesNotExist:
+            return None
         
+        # Ensure the user is active
+        if not user.is_active:
+            raise exceptions.AuthenticationFailed('User account is disabled')
+            
         return (user, token)
+
+    def authenticate_header(self, request):
+        return 'Bearer'

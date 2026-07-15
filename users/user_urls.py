@@ -1,6 +1,11 @@
-from django.urls import path
-from .views import KYCProfileView
+from django.urls import path, include
+from rest_framework.routers import SimpleRouter
+from .views import KYCProfileView, UserViewSet
+
+router = SimpleRouter()
+router.register(r'', UserViewSet, basename='user')
 
 urlpatterns = [
     path('profile/', KYCProfileView.as_view(), name='user-profile'),
+    path('', include(router.urls)),
 ]
