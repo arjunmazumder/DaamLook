@@ -228,7 +228,9 @@ class ForgotPasswordView(APIView):
                 OTPVerification.objects.filter(phone_number=phone_number).delete()
                 
                 otp_code = generate_otp()
-                OTPVerification.objects.create(phone_number=phone_number, otp_code=otp_code)
+                from django.utils import timezone
+                expires_at = timezone.now() + timedelta(minutes=5)
+                OTPVerification.objects.create(phone_number=phone_number, otp_code=otp_code, expires_at=expires_at)
                 
                 # Send SMS
                 success = send_otp_sms(phone_number, otp_code)

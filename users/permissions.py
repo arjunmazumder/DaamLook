@@ -69,3 +69,35 @@ class IsServiceProvider(BasePermission):
             request.user.role.name == 'ROLE' and 
             request.user.role.value == 'SERVICE_PROVIDER'
         )
+
+class IsAdminOrSuperAdminOrServiceProvider(BasePermission):
+    """
+    Allows access only to superusers, or users with the 'ADMIN' or 'SERVICE_PROVIDER' role.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+            
+        if request.user.is_superuser:
+            return True
+            
+        if request.user.role and request.user.role.name == 'ROLE':
+            return request.user.role.value in ['ADMIN', 'SERVICE_PROVIDER']
+            
+        return False
+
+class IsAdminOrSuperAdminOrBuyer(BasePermission):
+    """
+    Allows access only to superusers, or users with the 'ADMIN' or 'BUYER' role.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+            
+        if request.user.is_superuser:
+            return True
+            
+        if request.user.role and request.user.role.name == 'ROLE':
+            return request.user.role.value in ['ADMIN', 'BUYER']
+            
+        return False
