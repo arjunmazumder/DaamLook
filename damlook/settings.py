@@ -37,6 +37,8 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -51,6 +53,9 @@ INSTALLED_APPS = [
     'corsheaders',
     'core',
     'services',
+    'vendors',
+    'products',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
@@ -82,6 +87,23 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'damlook.wsgi.application'
+ASGI_APPLICATION = 'damlook.asgi.application'
+
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
+#         'CONFIG': {
+#             "hosts": [('127.0.0.1', 6379)],
+#         },
+#     },
+# }
+
+# For local testing without Redis server:
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
 
 
 # Database

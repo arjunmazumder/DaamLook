@@ -4,6 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from .models import ActiveUser, ActiveCustomer
 from .serializers import UpdateLocationSerializer, UpdateCustomerLocationSerializer
+from .utils import cleanup_inactive_locations
 from drf_yasg.utils import swagger_auto_schema
 
 class UpdateLocationView(APIView):
@@ -15,7 +16,11 @@ class UpdateLocationView(APIView):
         request_body=UpdateLocationSerializer,
         responses={200: "Location updated successfully"}
     )
+    
     def post(self, request):
+        # Auto-cleanup locations older than 5 minutes
+        cleanup_inactive_locations(minutes=5)
+        
         serializer = UpdateLocationSerializer(data=request.data)
         if serializer.is_valid():
             active_user, created = ActiveUser.objects.update_or_create(
@@ -47,6 +52,9 @@ class UpdateCustomerLocationView(APIView):
                 {"error": "Permission denied. Only buyers can update their location here."}, 
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        # Auto-cleanup locations older than 5 minutes
+        cleanup_inactive_locations(minutes=5)
 
         serializer = UpdateCustomerLocationSerializer(data=request.data)
         if serializer.is_valid():
