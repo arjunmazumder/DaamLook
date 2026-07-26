@@ -461,14 +461,47 @@ class UserViewSet(mixins.ListModelMixin,
     search_fields = ['phone_number', 'full_name']
 
     def get_queryset(self):
-        return User.objects.select_related('role', 'kyc_profile').order_by('-created_at')
+        queryset = User.objects.select_related('role', 'kyc_profile').order_by('-created_at')
+        role_id = self.request.query_params.get('role_id')
+        kyc_status = self.request.query_params.get('kyc_status')
+        if role_id:
+            queryset = queryset.filter(role_id=role_id)
+        if kyc_status:
+            queryset = queryset.filter(kyc_profile__status=kyc_status.upper())
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve', 'pending']:
             return UserWithProfileSerializer
         return UserSerializer
 
+    @swagger_auto_schema(tags=['Admin Panel'])
+    def list(self, request, *args, **kwargs):
+        """List all users (Supports filtering via query params: role_id, kyc_status)"""
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(tags=['Admin Panel'])
+    def retrieve(self, request, *args, **kwargs):
+        """Get details of a specific user"""
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(tags=['Admin Panel'])
+    def update(self, request, *args, **kwargs):
+        """Update a specific user"""
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(tags=['Admin Panel'])
+    def partial_update(self, request, *args, **kwargs):
+        """Partially update a specific user"""
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(tags=['Admin Panel'])
+    def destroy(self, request, *args, **kwargs):
+        """Delete a specific user"""
+        return super().destroy(request, *args, **kwargs)
+
     @swagger_auto_schema(
+        tags=['Admin Panel'],
         operation_summary="Get Pending Users",
         operation_description="Returns a paginated list of users (is_approved=False OR is_phone_verified=False)."
     )
@@ -483,3 +516,59 @@ class UserViewSet(mixins.ListModelMixin,
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+    @swagger_auto_schema(
+        tags=['Admin Panel'],
+        operation_summary="Approve User KYC",
+        responses={200: 'KYC Approved successfully', 400: 'No KYC Profile found', 404: 'User not found'}
+    )
+    @action(detail=True, methods=['post'], url_path='approve-kyc')
+    def approve_kyc(self, request, pk=None):
+        user = self.get_object()
+        if hasattr(user, 'kyc_profile'):
+            user.kyc_profile.status = 'APPROVED'
+            from django.utils import timezone
+            user.kyc_profile.verified_at = timezone.now()
+            user.kyc_profile.save()
+            user.is_approved = True
+            user.save()
+            return Response({'detail': 'User KYC approved successfully.'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'No KYC profile found for this user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        tags=['Admin Panel'],
+        operation_summary="Reject User KYC",
+        responses={200: 'KYC Rejected successfully', 400: 'No KYC Profile found', 404: 'User not found'}
+    )
+    @action(detail=True, methods=['post'], url_path='reject-kyc')
+    def reject_kyc(self, request, pk=None):
+        user = self.get_object()
+        if hasattr(user, 'kyc_profile'):
+            user.kyc_profile.status = 'REJECTED'
+            user.kyc_profile.save()
+            return Response({'detail': 'User KYC rejected successfully.'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'No KYC profile found for this user.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        tags=['Admin Panel'],
+        operation_summary="Suspend User Account",
+        responses={200: 'Account suspended successfully', 404: 'User not found'}
+    )
+    @action(detail=True, methods=['post'], url_path='suspend')
+    def suspend(self, request, pk=None):
+        user = self.get_object()
+        user.is_active = False
+        user.save()
+        return Response({'detail': 'User account suspended successfully.'}, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        tags=['Admin Panel'],
+        operation_summary="Unsuspend/Activate User Account",
+        responses={200: 'Account activated successfully', 404: 'User not found'}
+    )
+    @action(detail=True, methods=['post'], url_path='unsuspend')
+    def unsuspend(self, request, pk=None):
+        user = self.get_object()
+        user.is_active = True
+        user.save()
+        return Response({'detail': 'User account activated successfully.'}, status=status.HTTP_200_OK)

@@ -117,6 +117,50 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(rejected_products, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
+    def vendor(self, request):
+        user = request.user
+        if getattr(self, 'swagger_fake_view', False):
+            return Response([])
+
+        if user.is_staff or user.is_superuser:
+            vendor_products = Product.objects.filter(approval_status='APPROVED', is_active=True)
+        else:
+            vendor_products = Product.objects.filter(approval_status='APPROVED', is_active=True, shop__user=user)
+
+        page = self.paginate_queryset(vendor_products)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(vendor_products, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
+    def search(self, request):
+        query = request.query_params.get('search', '').strip()
+        queryset = self.get_queryset() # This already filters for APPROVED and active products
+
+        if query:
+            queryset = queryset.filter(
+                Q(title__icontains=query) |
+                Q(description__icontains=query) |
+                Q(shop__shop_name__icontains=query) |
+                Q(category__name__icontains=query) |
+                Q(subcategory__name__icontains=query)
+            ).distinct()
+
+        # Order by highest shop rating first
+        queryset = queryset.order_by('-shop__average_rating', '-created_at')
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 class BulkPricingTierViewSet(viewsets.ModelViewSet):
     queryset = BulkPricingTier.objects.all()

@@ -11,7 +11,7 @@ from .models import ServiceProviderBusinessProfile
 class ServiceProviderBusinessProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceProviderBusinessProfile
-        fields = ['id', 'provider', 'shop_name', 'contact_number', 'address', 'categories', 'average_rating', 'total_reviews', 'created_at', 'updated_at']
+        fields = ['id', 'provider', 'shop_name', 'contact_number', 'address', 'categories', 'average_rating', 'total_reviews', 'admin_rating_adjustment', 'created_at', 'updated_at']
         read_only_fields = ['average_rating', 'total_reviews']
 
 class NearbyProviderSerializer(serializers.Serializer):
@@ -56,13 +56,30 @@ class ChatSessionSerializer(serializers.ModelSerializer):
         return 0
 
 class ServiceBookingSerializer(serializers.ModelSerializer):
-    buyer_name = serializers.CharField(source='buyer.full_name', read_only=True)
-    provider_name = serializers.CharField(source='provider.shop_name', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
+    buyer_details = serializers.SerializerMethodField()
+    provider_details = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceBooking
         fields = '__all__'
+
+    def get_buyer_details(self, obj):
+        buyer = obj.buyer
+        return {
+            "id": buyer.id,
+            "full_name": buyer.full_name,
+            "phone_number": buyer.phone_number
+        }
+
+    def get_provider_details(self, obj):
+        provider = obj.provider
+        return {
+            "id": provider.id,
+            "shop_name": provider.shop_name,
+            "contact_number": provider.contact_number,
+            "address": provider.address
+        }
 
 from .models import ServiceProviderReview
 

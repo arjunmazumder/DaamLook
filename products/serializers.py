@@ -10,8 +10,6 @@ class SubCategorySerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 class CategorySerializer(serializers.ModelSerializer):
-    subcategories = SubCategorySerializer(many=True, read_only=True)
-    
     class Meta:
         model = Category
         fields = '__all__'
@@ -21,22 +19,69 @@ class ProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
         fields = '__all__'
-        read_only_fields = ['product', 'created_at']
+        read_only_fields = ['created_at']
+
+    def validate(self, attrs):
+        product = attrs.get('product')
+        if product:
+            # If we are creating a new image, check the count
+            if not self.instance and product.images.count() >= 3:
+                raise serializers.ValidationError({"error": "A maximum of 3 images can be uploaded per product."})
+        return attrs
 
 class BulkPricingTierSerializer(serializers.ModelSerializer):
     class Meta:
         model = BulkPricingTier
         fields = '__all__'
-        read_only_fields = ['product']
 
 class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     bulk_pricing_tiers = BulkPricingTierSerializer(many=True, read_only=True)
+    after_discount_price = serializers.SerializerMethodField()
+
+    def get_after_discount_price(self, obj):
+        from django.utils import timezone
+        
+        # Determine the base price based on product type
+        base_price = obj.retail_price if obj.product_type == 'RETAIL' else obj.base_wholesale_price
+        
+        if not base_price:
+            return None
+            
+        if obj.discount_type == 'NONE' or not obj.discount_value:
+            return None
+            
+        # Check if discount dates are valid
+        now = timezone.now()
+        if obj.discount_start_date and obj.discount_end_date:
+            if not (obj.discount_start_date <= now <= obj.discount_end_date):
+                return None
+                
+        # Calculate discount
+        if obj.discount_type == 'FLAT':
+            return max(0.0, float(base_price) - float(obj.discount_value))
+        elif obj.discount_type == 'PERCENTAGE':
+            discount_amount = float(base_price) * (float(obj.discount_value) / 100)
+            return max(0.0, float(base_price) - discount_amount)
+            
+        return None
     
     class Meta:
         model = Product
         fields = '__all__'
         read_only_fields = ['approval_status', 'rejection_reason', 'created_at', 'updated_at']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Move these fields to the end of the JSON response
+        after_discount = representation.pop('after_discount_price', None)
+        images = representation.pop('images', [])
+        bulk_pricing_tiers = representation.pop('bulk_pricing_tiers', [])
+        
+        representation['after_discount_price'] = after_discount
+        representation['images'] = images
+        representation['bulk_pricing_tiers'] = bulk_pricing_tiers
+        return representation
 
     def to_internal_value(self, data):
         # Convert empty strings to None for Decimal fields to prevent "A valid number is required" error

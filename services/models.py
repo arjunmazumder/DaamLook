@@ -22,6 +22,7 @@ class ServiceProviderBusinessProfile(models.Model):
     categories = models.ManyToManyField(ServiceCategory, related_name='providers')
     average_rating = models.FloatField(default=0.0)
     total_reviews = models.IntegerField(default=0)
+    admin_rating_adjustment = models.FloatField(default=0.0, help_text="Manual rating adjustment by admin")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -130,6 +131,29 @@ class ServiceProviderReview(models.Model):
             2
         )
         super().save(*args, **kwargs)
+
+        provider = self.reviewee
+        reviews = provider.received_reviews.all()
+        total = reviews.count()
+        if total > 0:
+            avg = sum(r.rating_stars for r in reviews) / float(total)
+            provider.total_reviews = total
+            provider.average_rating = min(max(round(avg + provider.admin_rating_adjustment, 2), 0.0), 5.0)
+            provider.save(update_fields=['total_reviews', 'average_rating', 'updated_at'])
+
+    def delete(self, *args, **kwargs):
+        provider = self.reviewee
+        super().delete(*args, **kwargs)
+        reviews = provider.received_reviews.all()
+        total = reviews.count()
+        if total > 0:
+            avg = sum(r.rating_stars for r in reviews) / float(total)
+            provider.total_reviews = total
+            provider.average_rating = min(max(round(avg + provider.admin_rating_adjustment, 2), 0.0), 5.0)
+        else:
+            provider.total_reviews = 0
+            provider.average_rating = min(max(round(0.0 + provider.admin_rating_adjustment, 2), 0.0), 5.0)
+        provider.save(update_fields=['total_reviews', 'average_rating', 'updated_at'])
 
     def __str__(self):
         return f"Review for {self.reviewee.shop_name} by {self.reviewer.phone_number}"

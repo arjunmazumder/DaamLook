@@ -28,6 +28,7 @@ class ShopProfile(models.Model):
 
     average_rating = models.FloatField(default=0.0)
     total_reviews = models.IntegerField(default=0)
+    admin_rating_adjustment = models.FloatField(default=0.0, help_text="Manual rating adjustment by admin")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -61,7 +62,7 @@ class ShopReview(models.Model):
         if total > 0:
             avg = sum(r.average_rating for r in reviews) / float(total)
             self.shop.total_reviews = total
-            self.shop.average_rating = round(avg, 2)
+            self.shop.average_rating = min(max(round(avg + self.shop.admin_rating_adjustment, 2), 0.0), 5.0)
             self.shop.save(update_fields=['total_reviews', 'average_rating', 'updated_at'])
 
     def delete(self, *args, **kwargs):
@@ -72,11 +73,48 @@ class ShopReview(models.Model):
         if total > 0:
             avg = sum(r.average_rating for r in reviews) / float(total)
             shop.total_reviews = total
-            shop.average_rating = round(avg, 2)
+            shop.average_rating = min(max(round(avg + shop.admin_rating_adjustment, 2), 0.0), 5.0)
         else:
             shop.total_reviews = 0
-            shop.average_rating = 0.0
+            shop.average_rating = min(max(round(0.0 + shop.admin_rating_adjustment, 2), 0.0), 5.0)
         shop.save(update_fields=['total_reviews', 'average_rating', 'updated_at'])
 
     def __str__(self):
         return f"Review by {self.reviewer} for {self.shop.shop_name}"
+
+class VendorChatSession(models.Model):
+    buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='initiated_vendor_chats')
+    vendor = models.ForeignKey(ShopProfile, on_delete=models.CASCADE, related_name='received_vendor_chats')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('buyer', 'vendor') 
+
+    def __str__(self):
+        # Fallback to username or email if phone_number doesn't exist
+        buyer_identifier = getattr(self.buyer, 'phone_number', getattr(self.buyer, 'username', getattr(self.buyer, 'email', str(self.buyer.id))))
+        return f"Chat between {buyer_identifier} & {self.vendor.shop_name}"
+
+
+class VendorChatMessage(models.Model):
+    MESSAGE_TYPE_CHOICES = (
+        ('TEXT', 'Text'),
+        ('IMAGE', 'Image'),
+        ('SYSTEM_ALERT', 'System Alert'),
+        ('INVOICE', 'Invoice'),
+    )
+    session = models.ForeignKey(VendorChatSession, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_vendor_messages')
+    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default='TEXT')
+    message = models.TextField(blank=True, null=True)
+    attachment = models.FileField(upload_to='vendors/chats/', blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"Message {self.id} in Session {self.session_id}"
