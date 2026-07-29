@@ -23,11 +23,26 @@ class ServiceProviderBusinessProfile(models.Model):
     average_rating = models.FloatField(default=0.0)
     total_reviews = models.IntegerField(default=0)
     admin_rating_adjustment = models.FloatField(default=0.0, help_text="Manual rating adjustment by admin")
+    about_me = models.TextField(blank=True, null=True)
+    work_day = models.CharField(max_length=100, blank=True, null=True)
+    available_time = models.CharField(max_length=100, blank=True, null=True)
+    total_complete_worked = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.shop_name
+
+class Recentwork(models.Model):
+    provider = models.ForeignKey(ServiceProviderBusinessProfile, on_delete=models.CASCADE, related_name='recent_works')
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    image = models.ImageField(upload_to='services/recent_works/', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
 
 class ChatSession(models.Model):
     buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='initiated_chats')
@@ -181,7 +196,7 @@ class ServiceInvoice(models.Model):
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     
-    payment_status = models.CharField(max_length=30, choices=PAYMENT_STATUS_CHOICES, default='UNPAID')
+    payment_status = models.CharField(max_length=30, choices=PAYMENT_STATUS_CHOICES, default='PAID')
     payment_method = models.CharField(max_length=30, choices=PAYMENT_METHOD_CHOICES, blank=True, null=True)
     transaction_id = models.CharField(max_length=100, blank=True, null=True)
     
@@ -189,6 +204,7 @@ class ServiceInvoice(models.Model):
     paid_at = models.DateTimeField(blank=True, null=True)
 
     def save(self, *args, **kwargs):
+        is_new = self.pk is None
         # Auto-fetch base_amount from booking.service_bill if not set
         if self.booking and (not self.base_amount or self.base_amount == 0):
             if self.booking.service_bill and self.booking.service_bill > 0:
@@ -202,6 +218,10 @@ class ServiceInvoice(models.Model):
             self.paid_at = timezone.now()
 
         super().save(*args, **kwargs)
+
+        if is_new and self.booking and self.booking.provider:
+            self.booking.provider.total_complete_worked += 1
+            self.booking.provider.save(update_fields=['total_complete_worked', 'updated_at'])
 
         if not self.invoice_number:
             self.invoice_number = f"INV-{self.id:04d}"
@@ -218,5 +238,37 @@ class ServiceInvoice(models.Model):
             if booking_updated:
                 self.booking.save(update_fields=['service_bill', 'payment_status', 'updated_at'])
 
+        # --- COMMISSION LOGIC ---
+        from core.models import Commission
+        from decimal import Decimal
+        
+        commission_setting = None
+        if self.booking and self.booking.category:
+            commission_setting = Commission.objects.filter(servicecategory=self.booking.category).first()
+            
+        if not commission_setting:
+            commission_setting = Commission.objects.filter(category__isnull=True, servicecategory__isnull=True).first()
+            
+        calculated_commission = Decimal('0.00')
+        if commission_setting:
+            if commission_setting.percentage and commission_setting.percentage > 0:
+                calculated_commission = (self.total_amount * commission_setting.percentage) / Decimal('100.00')
+            elif commission_setting.flat and commission_setting.flat > 0:
+                calculated_commission = commission_setting.flat
+                
+        service_comm, created = ServiceCommission.objects.get_or_create(invoice=self)
+        if service_comm.commission_amount != calculated_commission:
+            service_comm.commission_amount = calculated_commission
+            service_comm.save(update_fields=['commission_amount', 'updated_at'])
+
     def __str__(self):
         return f"{self.invoice_number} for Booking {self.booking.id}"
+
+class ServiceCommission(models.Model):
+    invoice = models.OneToOneField(ServiceInvoice, on_delete=models.CASCADE, related_name='commission_record')
+    commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Commission for {self.invoice.invoice_number} - {self.commission_amount}"

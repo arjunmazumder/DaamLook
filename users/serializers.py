@@ -159,3 +159,19 @@ class ResetPasswordSerializer(serializers.Serializer):
         if data['new_password'] != data['confirm_new_password']:
             raise serializers.ValidationError("Passwords do not match.")
         return data
+
+# --- BUYER AUTH SERIALIZERS ---
+class BuyerRegisterSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+    full_name = serializers.CharField(max_length=255)
+
+class BuyerRegisterVerifySerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+    otp_code = serializers.CharField(max_length=6)
+
+class BuyerLoginSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+
+class BuyerLoginVerifySerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=15)
+    otp_code = serializers.CharField(max_length=6)

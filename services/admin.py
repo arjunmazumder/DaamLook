@@ -7,7 +7,9 @@ from .models import (
     ServiceBooking,
     ServiceProviderNotification,
     ServiceProviderReview,
-    ServiceInvoice
+    ServiceInvoice,
+    ServiceCommission,
+    Recentwork
 )
 
 @admin.register(ServiceCategory)
@@ -20,6 +22,11 @@ class ServiceCategoryAdmin(admin.ModelAdmin):
 class ServiceProviderBusinessProfileAdmin(admin.ModelAdmin):
     list_display = ('shop_name', 'provider', 'contact_number', 'average_rating')
     search_fields = ('shop_name', 'contact_number', 'provider__phone_number')
+
+@admin.register(Recentwork)
+class RecentworkAdmin(admin.ModelAdmin):
+    list_display = ('title', 'provider', 'created_at')
+    search_fields = ('title', 'provider__shop_name')
 
 @admin.register(ChatSession)
 class ChatSessionAdmin(admin.ModelAdmin):
@@ -56,3 +63,8 @@ class ServiceInvoiceAdmin(admin.ModelAdmin):
     list_filter = ('payment_status', 'payment_method')
     search_fields = ('invoice_number', 'transaction_id', 'booking__buyer__phone_number')
     readonly_fields = ('invoice_number', 'total_amount', 'paid_at')
+
+@admin.register(ServiceCommission)
+class ServiceCommissionAdmin(admin.ModelAdmin):
+    list_display = ('invoice', 'commission_amount', 'created_at')
+    search_fields = ('invoice__invoice_number',)

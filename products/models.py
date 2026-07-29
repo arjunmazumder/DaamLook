@@ -1,8 +1,13 @@
 from django.db import models
 
 class Category(models.Model):
+    CATEGORY_TYPE_CHOICES = (
+        ('RETAIL', 'Retail'),
+        ('WHOLESALE', 'Wholesale'),
+    )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
+    category_type = models.CharField(max_length=20, choices=CATEGORY_TYPE_CHOICES, default='RETAIL')
     image = models.ImageField(upload_to='category_images/', blank=True, null=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

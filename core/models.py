@@ -40,3 +40,18 @@ class BroadcastAnnouncement(models.Model):
 
     def __str__(self):
         return f"{self.title} ({self.target_audience})"
+
+class Commission(models.Model):
+    category = models.ForeignKey('products.Category', on_delete=models.CASCADE, null=True, blank=True, related_name='commissions')
+    servicecategory = models.ForeignKey('services.ServiceCategory', on_delete=models.CASCADE, null=True, blank=True, related_name='commissions')
+    percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00, help_text="Commission in percentage (%)")
+    flat = models.DecimalField(max_digits=10, decimal_places=2, default=0.00, help_text="Flat commission amount")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        if self.category:
+            return f"Commission for Product Category: {self.category.name}"
+        if self.servicecategory:
+            return f"Commission for Service Category: {self.servicecategory.name}"
+        return "Global Commission"

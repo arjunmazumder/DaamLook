@@ -6,13 +6,25 @@ class ServiceCategorySerializer(serializers.ModelSerializer):
         model = ServiceCategory
         fields = ['id', 'name', 'description', 'icon_img', 'is_active', 'created_at', 'updated_at']
 
-from .models import ServiceProviderBusinessProfile
+from .models import ServiceProviderBusinessProfile, Recentwork
+
+class RecentworkSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Recentwork
+        fields = ['id', 'title', 'description', 'image', 'created_at', 'updated_at']
 
 class ServiceProviderBusinessProfileSerializer(serializers.ModelSerializer):
+    recent_works = RecentworkSerializer(many=True, read_only=True)
+
     class Meta:
         model = ServiceProviderBusinessProfile
-        fields = ['id', 'provider', 'shop_name', 'contact_number', 'address', 'categories', 'average_rating', 'total_reviews', 'admin_rating_adjustment', 'created_at', 'updated_at']
+        fields = ['id', 'provider', 'shop_name', 'contact_number', 'address', 'categories', 'average_rating', 'total_reviews', 'admin_rating_adjustment', 'about_me', 'work_day', 'available_time', 'total_complete_worked', 'recent_works', 'created_at', 'updated_at']
         read_only_fields = ['average_rating', 'total_reviews']
+
+    def to_representation(self, instance):
+        response = super().to_representation(instance)
+        response['categories'] = ServiceCategorySerializer(instance.categories.all(), many=True).data
+        return response
 
 class NearbyProviderSerializer(serializers.Serializer):
     provider_id = serializers.IntegerField()
@@ -101,3 +113,14 @@ class ServiceInvoiceSerializer(serializers.ModelSerializer):
         model = ServiceInvoice
         fields = '__all__'
         read_only_fields = ['invoice_number', 'total_amount', 'paid_at', 'created_at']
+
+from .models import ServiceCommission
+
+class ServiceCommissionSerializer(serializers.ModelSerializer):
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    provider_shop_name = serializers.CharField(source='invoice.booking.provider.shop_name', read_only=True)
+    invoice_total_amount = serializers.DecimalField(source='invoice.total_amount', max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ServiceCommission
+        fields = ['id', 'invoice', 'invoice_number', 'provider_shop_name', 'invoice_total_amount', 'commission_amount', 'created_at', 'updated_at']

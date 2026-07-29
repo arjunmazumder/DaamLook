@@ -3,8 +3,25 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
-from .models import ShopProfile, ShopReview, VendorChatSession, VendorChatMessage
-from .serializers import ShopProfileSerializer, ShopReviewSerializer, VendorChatSessionSerializer, VendorChatMessageSerializer
+from .models import ShopProfile, ShopReview, VendorChatSession, VendorChatMessage, City
+from .serializers import ShopProfileSerializer, ShopReviewSerializer, VendorChatSessionSerializer, VendorChatMessageSerializer, CitySerializer
+from drf_yasg.utils import swagger_auto_schema
+from django.utils.decorators import method_decorator
+
+@method_decorator(name='list', decorator=swagger_auto_schema(tags=['City']))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['City']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['City']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['City']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['City']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['City']))
+class CityViewSet(viewsets.ModelViewSet):
+    """
+    CRUD API for Cities.
+    Provides the list of cities available for Shop locations and Buyer checkouts.
+    """
+    queryset = City.objects.filter(is_active=True).order_by('name')
+    serializer_class = CitySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
 class ShopProfileViewSet(viewsets.ModelViewSet):
     queryset = ShopProfile.objects.all()

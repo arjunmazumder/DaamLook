@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import ShopProfile, ShopReview
+from .models import ShopProfile, ShopReview, City
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'is_active', 'created_at')
+    search_fields = ('name',)
+    list_filter = ('is_active',)
+
 
 @admin.register(ShopProfile)
 class ShopProfileAdmin(admin.ModelAdmin):

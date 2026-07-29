@@ -3,6 +3,19 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+class City(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Cities"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
 class ShopProfile(models.Model):
     SHOP_TYPE_CHOICES = (
         ('RETAILER', 'Retailer'),
@@ -18,6 +31,7 @@ class ShopProfile(models.Model):
     banner = models.ImageField(upload_to='shop/banners/', blank=True, null=True)
     
     contact_email = models.EmailField(blank=True, null=True)
+    city = models.ForeignKey(City, on_delete=models.SET_NULL, null=True, blank=True, related_name='shops')
     shop_address = models.TextField()
 
     trade_license_number = models.CharField(max_length=100, blank=True, null=True)

@@ -456,6 +456,7 @@ class UserViewSet(mixins.ListModelMixin,
                   mixins.UpdateModelMixin,
                   mixins.DestroyModelMixin,
                   viewsets.GenericViewSet):
+    queryset = User.objects.all()
     permission_classes = [IsAdminOrSuperAdmin]
     filter_backends = [filters.SearchFilter]
     search_fields = ['phone_number', 'full_name']
@@ -572,3 +573,154 @@ class UserViewSet(mixins.ListModelMixin,
         user.is_active = True
         user.save()
         return Response({'detail': 'User account activated successfully.'}, status=status.HTTP_200_OK)
+
+# --- BUYER AUTH VIEWS ---
+from .serializers import BuyerRegisterSerializer, BuyerRegisterVerifySerializer, BuyerLoginSerializer, BuyerLoginVerifySerializer
+
+class BuyerRegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        tags=['Buyer Authentication'],
+        operation_summary="Buyer Registration",
+        request_body=BuyerRegisterSerializer
+    )
+    def post(self, request):
+        serializer = BuyerRegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data['phone_number']
+            full_name = serializer.validated_data['full_name']
+            
+            if User.objects.filter(phone_number=phone_number).exists():
+                return Response({'error': 'User with this phone number already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+                
+            otp_code = generate_otp()
+            expires_at = timezone.now() + timedelta(minutes=5)
+            
+            OTPVerification.objects.update_or_create(
+                phone_number=phone_number,
+                defaults={
+                    'otp_code': otp_code,
+                    'full_name': full_name,
+                    'is_verified': False,
+                    'expires_at': expires_at
+                }
+            )
+            send_otp_sms(phone_number, otp_code)
+            return Response({'message': 'OTP sent successfully.'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class BuyerRegisterVerifyView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        tags=['Buyer Authentication'],
+        operation_summary="Buyer Registration Verify",
+        request_body=BuyerRegisterVerifySerializer
+    )
+    def post(self, request):
+        serializer = BuyerRegisterVerifySerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data['phone_number']
+            otp_code = serializer.validated_data['otp_code']
+            
+            otp_record = OTPVerification.objects.filter(phone_number=phone_number, otp_code=otp_code).first()
+            if not otp_record:
+                return Response({'error': 'Invalid OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+            if otp_record.is_expired():
+                return Response({'error': 'OTP has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+                
+            otp_record.is_verified = True
+            otp_record.save()
+            
+            buyer_role = Lookup.objects.filter(name='ROLE', value='BUYER').first()
+            
+            user = User.objects.create_user(
+                phone_number=phone_number,
+                full_name=otp_record.full_name,
+                role=buyer_role,
+                is_phone_verified=True,
+                is_approved=True
+            )
+            
+            access_token, refresh_token = login_user(user)
+            response_data = {
+                "message": "Registration verified and logged in successfully.",
+                "data": {
+                    "access_token": access_token,
+                    "user": UserWithProfileSerializer(user).data
+                }
+            }
+            response = Response(response_data, status=status.HTTP_201_CREATED)
+            set_auth_cookies(response, access_token, refresh_token)
+            return response
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class BuyerLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        tags=['Buyer Authentication'],
+        operation_summary="Buyer Login Send OTP",
+        request_body=BuyerLoginSerializer
+    )
+    def post(self, request):
+        serializer = BuyerLoginSerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data['phone_number']
+            
+            if not User.objects.filter(phone_number=phone_number).exists():
+                return Response({'error': 'User with this phone number does not exist.'}, status=status.HTTP_404_NOT_FOUND)
+                
+            otp_code = generate_otp()
+            expires_at = timezone.now() + timedelta(minutes=5)
+            
+            OTPVerification.objects.update_or_create(
+                phone_number=phone_number,
+                defaults={
+                    'otp_code': otp_code,
+                    'is_verified': False,
+                    'expires_at': expires_at
+                }
+            )
+            send_otp_sms(phone_number, otp_code)
+            return Response({'message': 'OTP sent successfully.'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class BuyerLoginVerifyView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        tags=['Buyer Authentication'],
+        operation_summary="Buyer Login Verify",
+        request_body=BuyerLoginVerifySerializer
+    )
+    def post(self, request):
+        serializer = BuyerLoginVerifySerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data['phone_number']
+            otp_code = serializer.validated_data['otp_code']
+            
+            otp_record = OTPVerification.objects.filter(phone_number=phone_number, otp_code=otp_code).first()
+            if not otp_record:
+                return Response({'error': 'Invalid OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+            if otp_record.is_expired():
+                return Response({'error': 'OTP has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+                
+            otp_record.is_verified = True
+            otp_record.save()
+            
+            user = User.objects.get(phone_number=phone_number)
+            
+            access_token, refresh_token = login_user(user)
+            response_data = {
+                "message": "Login verified successfully.",
+                "data": {
+                    "access_token": access_token,
+                    "user": UserWithProfileSerializer(user).data
+                }
+            }
+            response = Response(response_data, status=status.HTTP_200_OK)
+            set_auth_cookies(response, access_token, refresh_token)
+            return response
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

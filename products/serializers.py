@@ -38,6 +38,7 @@ class ProductSerializer(serializers.ModelSerializer):
     images = ProductImageSerializer(many=True, read_only=True)
     bulk_pricing_tiers = BulkPricingTierSerializer(many=True, read_only=True)
     after_discount_price = serializers.SerializerMethodField()
+    shop_name = serializers.CharField(source='shop.shop_name', read_only=True)
 
     def get_after_discount_price(self, obj):
         from django.utils import timezone

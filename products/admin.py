@@ -3,8 +3,9 @@ from .models import Category, SubCategory, Product, ProductImage, BulkPricingTie
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'created_at')
+    list_display = ('id', 'name', 'category_type', 'created_at')
     search_fields = ('name', 'description')
+    list_filter = ('category_type',)
 
 @admin.register(SubCategory)
 class SubCategoryAdmin(admin.ModelAdmin):

@@ -1,20 +1,31 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from .models import ServiceCategory
 from .serializers import ServiceCategorySerializer
 
 class ServiceCategoryViewSet(viewsets.ModelViewSet):
     queryset = ServiceCategory.objects.all()
     serializer_class = ServiceCategorySerializer
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    # permission_classes = [IsAuthenticatedOrReadOnly]
 
-from .models import ServiceProviderBusinessProfile
-from .serializers import ServiceProviderBusinessProfileSerializer
+from .models import ServiceProviderBusinessProfile, Recentwork
+from .serializers import ServiceProviderBusinessProfileSerializer, RecentworkSerializer
 from users.permissions import IsAdminOrSuperAdminOrServiceProvider
+
+from django_filters.rest_framework import DjangoFilterBackend
 
 class ServiceProviderBusinessProfileViewSet(viewsets.ModelViewSet):
     queryset = ServiceProviderBusinessProfile.objects.all()
     serializer_class = ServiceProviderBusinessProfileSerializer
+    # permission_classes = [IsAdminOrSuperAdminOrServiceProvider]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['categories']
+
+class RecentworkViewSet(viewsets.ModelViewSet):
+    queryset = Recentwork.objects.all()
+    serializer_class = RecentworkSerializer
     permission_classes = [IsAdminOrSuperAdminOrServiceProvider]
 
 from rest_framework.views import APIView
@@ -30,7 +41,7 @@ from drf_yasg.utils import swagger_auto_schema
 from core.utils import cleanup_inactive_locations
 
 class FindNearbyProvidersView(APIView):
-    permission_classes = [IsAdminOrSuperAdminOrBuyer]
+    # permission_classes = [IsAdminOrSuperAdminOrBuyer]
 
     @swagger_auto_schema(
         operation_summary="Find Nearby Service Providers",
@@ -106,6 +117,16 @@ from django.db.models import Q
 class ChatViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['provider_id'],
+            properties={
+                'provider_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='ID of the Service Provider'),
+            }
+        ),
+        responses={200: 'session_id and created flag'}
+    )
     @action(detail=False, methods=['post'])
     def start(self, request):
         provider_id = request.data.get('provider_id')
@@ -133,7 +154,19 @@ class ChatViewSet(viewsets.ViewSet):
         serializer = ChatSessionSerializer(sessions, many=True, context={'request': request})
         return Response(serializer.data)
 
-    @action(detail=True, methods=['get'])
+    @swagger_auto_schema(
+        method='post',
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'message': openapi.Schema(type=openapi.TYPE_STRING, description='The chat message text'),
+                'message_type': openapi.Schema(type=openapi.TYPE_STRING, description='Type of message, e.g., TEXT or IMAGE (Default: TEXT)'),
+            }
+        ),
+        responses={201: 'ChatMessageSerializer data'}
+    )
+    @swagger_auto_schema(method='get', responses={200: 'List of ChatMessageSerializer data'})
+    @action(detail=True, methods=['get', 'post'])
     def messages(self, request, pk=None):
         try:
             session = ChatSession.objects.get(id=pk)
@@ -149,7 +182,36 @@ class ChatViewSet(viewsets.ViewSet):
         if not is_buyer and not is_provider:
             return Response({"error": "Unauthorized"}, status=403)
             
-        # Mark unread messages as read
+        if request.method == 'POST':
+            # Create a new message
+            message_text = request.data.get('message', '')
+            message_type = request.data.get('message_type', 'TEXT')
+            
+            msg = ChatMessage.objects.create(
+                session=session,
+                sender=request.user,
+                message_type=message_type,
+                message=message_text
+            )
+            
+            # Push via channels
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'chat_{session.id}',
+                {
+                    'type': 'chat_message',
+                    'id': msg.id,
+                    'message': msg.message,
+                    'message_type': msg.message_type,
+                    'sender_id': request.user.id,
+                    'timestamp': str(msg.timestamp)
+                }
+            )
+            
+            serializer = ChatMessageSerializer(msg)
+            return Response(serializer.data, status=201)
+
+        # GET Handling: Mark unread messages as read
         unread_messages = session.messages.filter(is_read=False).exclude(sender=request.user)
         unread_messages.update(is_read=True)
 
@@ -169,16 +231,29 @@ class ChatViewSet(viewsets.ViewSet):
         data['buyer'] = session.buyer.id
         data['provider'] = session.provider.id
         
-        serializer = ServiceBookingSerializer(data=data)
+        existing_booking = ServiceBooking.objects.filter(chat_session=session).first()
+        
+        if existing_booking:
+            serializer = ServiceBookingSerializer(existing_booking, data=data, partial=True)
+        else:
+            serializer = ServiceBookingSerializer(data=data)
+            
         if serializer.is_valid():
             booking = serializer.save()
             
+            # Reset status to PENDING if we are issuing a new invoice/updating it
+            if existing_booking and booking.status != 'PENDING':
+                booking.status = 'PENDING'
+                booking.save(update_fields=['status'])
+            
             # Create a system message for the invoice
+            # Safely get service_number in case it's commented out in the model
+            service_ref = getattr(booking, 'service_number', f"#{booking.id}")
             msg = ChatMessage.objects.create(
                 session=session,
                 sender=request.user,
                 message_type='INVOICE',
-                message=f"Invoice created: {booking.service_number}"
+                message=f"Invoice created: {service_ref}"
             )
             
             # Push via channels
@@ -374,3 +449,28 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
         invoice.save()
 
         return Response(self.get_serializer(invoice).data)
+
+from .models import ServiceCommission
+from .serializers import ServiceCommissionSerializer
+
+class ServiceCommissionViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ServiceCommissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ServiceCommission.objects.none()
+
+        user = self.request.user
+        if not user.is_authenticated:
+            return ServiceCommission.objects.none()
+
+        if user.is_staff or user.is_superuser:
+            return ServiceCommission.objects.all().order_by('-created_at')
+            
+        if hasattr(user, 'business_profile'):
+            return ServiceCommission.objects.filter(
+                invoice__booking__provider=user.business_profile
+            ).order_by('-created_at')
+            
+        return ServiceCommission.objects.none()

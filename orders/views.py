@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from .models import Cart, CartItem, Order, OrderItem, VendorOrder
+from .models import Cart, CartItem, Order, OrderItem, VendorOrder, DeliveryCharge
 from products.models import Product
 from .serializers import CartSerializer, CartItemSerializer, OrderSerializer, VendorOrderSerializer
 from .utils import calculate_product_unit_price
@@ -126,11 +126,135 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['shipping_address', 'contact_phone'],
+            required=['buyer_city_id'],
+            properties={
+                'buyer_city_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='ID of the buyer selected City'),
+            }
+        ),
+        responses={200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'cart_details': openapi.Schema(type=openapi.TYPE_OBJECT, description="Full details of the cart and its items"),
+                'total_amount': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'total_delivery_charge': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'grand_total': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'delivery_charge_breakdown': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_OBJECT))
+            }
+        )}
+    )
+    @action(detail=False, methods=['post'])
+    def checkout_summary(self, request):
+        user = request.user
+        cart = Cart.objects.filter(user=user).first()
+        
+        if not cart or not cart.items.exists():
+            return Response({"error": "Your cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
+
+        buyer_city_id = request.data.get('buyer_city_id')
+        if not buyer_city_id:
+            return Response({"error": "buyer_city_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        total_amount = 0
+        unique_shops = set()
+
+        for cart_item in cart.items.all():
+            total_amount += (cart_item.quantity * cart_item.unit_price)
+            if cart_item.product.shop:
+                unique_shops.add(cart_item.product.shop)
+
+        delivery_rates = DeliveryCharge.objects.first()
+        total_delivery_charge = 0
+        breakdown = []
+        
+        if delivery_rates:
+            for shop in unique_shops:
+                if shop.city_id and str(shop.city_id) == str(buyer_city_id):
+                    charge = delivery_rates.inside_city
+                else:
+                    charge = delivery_rates.outside_city
+                    
+                total_delivery_charge += charge
+                breakdown.append({
+                    "shop_name": shop.shop_name,
+                    "delivery_charge": charge
+                })
+
+        return Response({
+            "cart_details": CartSerializer(cart).data,
+            "total_amount": total_amount,
+            "total_delivery_charge": total_delivery_charge,
+            "grand_total": total_amount + total_delivery_charge,
+            "delivery_charge_breakdown": breakdown
+        }, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter('buyer_city_id', openapi.IN_QUERY, description="ID of the buyer selected City", type=openapi.TYPE_INTEGER, required=True),
+        ],
+        responses={200: openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'cart_details': openapi.Schema(type=openapi.TYPE_OBJECT, description="Full details of the cart and its items"),
+                'total_amount': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'total_delivery_charge': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'grand_total': openapi.Schema(type=openapi.TYPE_NUMBER),
+                'delivery_charge_breakdown': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Schema(type=openapi.TYPE_OBJECT))
+            }
+        )}
+    )
+    @action(detail=False, methods=['get'])
+    def summary_details(self, request):
+        user = request.user
+        cart = Cart.objects.filter(user=user).first()
+        
+        if not cart or not cart.items.exists():
+            return Response({"error": "Your cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
+
+        buyer_city_id = request.query_params.get('buyer_city_id')
+        if not buyer_city_id:
+            return Response({"error": "buyer_city_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        total_amount = 0
+        unique_shops = set()
+
+        for cart_item in cart.items.all():
+            total_amount += (cart_item.quantity * cart_item.unit_price)
+            if cart_item.product.shop:
+                unique_shops.add(cart_item.product.shop)
+
+        delivery_rates = DeliveryCharge.objects.first()
+        total_delivery_charge = 0
+        breakdown = []
+        
+        if delivery_rates:
+            for shop in unique_shops:
+                if shop.city_id and str(shop.city_id) == str(buyer_city_id):
+                    charge = delivery_rates.inside_city
+                else:
+                    charge = delivery_rates.outside_city
+                    
+                total_delivery_charge += charge
+                breakdown.append({
+                    "shop_name": shop.shop_name,
+                    "delivery_charge": charge
+                })
+
+        return Response({
+            "cart_details": CartSerializer(cart).data,
+            "total_amount": total_amount,
+            "total_delivery_charge": total_delivery_charge,
+            "grand_total": total_amount + total_delivery_charge,
+            "delivery_charge_breakdown": breakdown
+        }, status=status.HTTP_200_OK)
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['shipping_address', 'contact_phone', 'buyer_city_id'],
             properties={
                 'shipping_address': openapi.Schema(type=openapi.TYPE_STRING, description='Shipping Address'),
                 'contact_phone': openapi.Schema(type=openapi.TYPE_STRING, description='Contact Phone Number'),
                 'payment_method': openapi.Schema(type=openapi.TYPE_STRING, description='Payment Method (COD or ONLINE)'),
+                'buyer_city_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='ID of the buyer selected City'),
             }
         ),
         responses={201: OrderSerializer()}
@@ -146,13 +270,15 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
         shipping_address = request.data.get('shipping_address')
         contact_phone = request.data.get('contact_phone')
         payment_method = request.data.get('payment_method', 'COD')
+        buyer_city_id = request.data.get('buyer_city_id')
 
-        if not shipping_address or not contact_phone:
-            return Response({"error": "Shipping address and contact phone are required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not shipping_address or not contact_phone or not buyer_city_id:
+            return Response({"error": "Shipping address, contact phone, and buyer_city_id are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Create main order
         order = Order.objects.create(
             buyer=user,
+            buyer_city_id=buyer_city_id,
             shipping_address=shipping_address,
             contact_phone=contact_phone,
             payment_method=payment_method,
@@ -160,6 +286,7 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         total_amount = 0
+        unique_shops = set()
 
         # Copy items to OrderItem
         for cart_item in cart.items.all():
@@ -177,7 +304,19 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
                 unit_price=cart_item.unit_price
             )
             total_amount += (cart_item.quantity * cart_item.unit_price)
+            unique_shops.add(product.shop)
 
+        # Calculate Delivery Charge
+        delivery_rates = DeliveryCharge.objects.first()
+        total_delivery_charge = 0
+        if delivery_rates:
+            for shop in unique_shops:
+                if shop.city_id and str(shop.city_id) == str(buyer_city_id):
+                    total_delivery_charge += delivery_rates.inside_city
+                else:
+                    total_delivery_charge += delivery_rates.outside_city
+
+        order.total_delivery_charge = total_delivery_charge
         order.total_amount = total_amount
         order.save()
 
@@ -209,12 +348,24 @@ class AdminOrderViewSet(viewsets.ModelViewSet):
                 shop_items[item.shop] = []
             shop_items[item.shop].append(item)
 
+        delivery_rates = DeliveryCharge.objects.first()
+
         for shop, items in shop_items.items():
             subtotal = sum(i.quantity * i.unit_price for i in items)
+            
+            # Calculate this specific shop's delivery charge
+            delivery_charge = 0
+            if delivery_rates:
+                if shop.city_id and str(shop.city_id) == str(order.buyer_city_id):
+                    delivery_charge = delivery_rates.inside_city
+                else:
+                    delivery_charge = delivery_rates.outside_city
+                    
             vendor_order = VendorOrder.objects.create(
                 parent_order=order,
                 vendor_shop=shop,
                 subtotal_amount=subtotal,
+                delivery_charge=delivery_charge,
                 status='PROCESSING'
             )
             # Update items to link to this vendor order
@@ -296,3 +447,49 @@ class VendorOrderViewSet(viewsets.ReadOnlyModelViewSet):
         vendor_order.save()
         
         return Response(VendorOrderSerializer(vendor_order).data)
+
+from django.utils.decorators import method_decorator
+from .serializers import DeliveryChargeSerializer
+
+@method_decorator(name='list', decorator=swagger_auto_schema(tags=['DeliveryCharge']))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['DeliveryCharge']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['DeliveryCharge']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['DeliveryCharge']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['DeliveryCharge']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['DeliveryCharge']))
+class DeliveryChargeViewSet(viewsets.ModelViewSet):
+    """
+    CRUD API for Delivery Charges.
+    """
+    queryset = DeliveryCharge.objects.all()
+    serializer_class = DeliveryChargeSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+from .models import OrderCommission
+from .serializers import OrderCommissionSerializer
+
+class OrderCommissionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Read-only API for Order Commissions.
+    Admins see all, Vendors see commissions for their shop.
+    """
+    serializer_class = OrderCommissionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return OrderCommission.objects.none()
+
+        user = self.request.user
+        if not user.is_authenticated:
+            return OrderCommission.objects.none()
+
+        if user.is_staff or user.is_superuser:
+            return OrderCommission.objects.all().order_by('-created_at')
+            
+        if hasattr(user, 'business_profile'):
+            return OrderCommission.objects.filter(
+                order_item__shop=user.business_profile
+            ).order_by('-created_at')
+            
+        return OrderCommission.objects.none()

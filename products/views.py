@@ -59,6 +59,7 @@ class IsVendorOrAdminOrReadOnly(permissions.BasePermission):
         return False
 
 class ProductViewSet(viewsets.ModelViewSet):
+    queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsVendorOrAdminOrReadOnly]
     filter_backends = [SearchFilter, DjangoFilterBackend]

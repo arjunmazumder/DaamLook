@@ -1,5 +1,10 @@
 from rest_framework import serializers
-from .models import ShopProfile, ShopReview, VendorChatSession, VendorChatMessage
+from .models import ShopProfile, ShopReview, VendorChatSession, VendorChatMessage, City
+
+class CitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = City
+        fields = '__all__'
 
 class ShopProfileSerializer(serializers.ModelSerializer):
     user_phone = serializers.CharField(source='user.phone_number', read_only=True)

@@ -59,6 +59,7 @@ class KYCProfile(models.Model):
 class OTPVerification(models.Model):
     phone_number = models.CharField(max_length=15)
     otp_code = models.CharField(max_length=6)
+    full_name = models.CharField(max_length=255, blank=True, null=True)
     is_verified = models.BooleanField(default=False)
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
