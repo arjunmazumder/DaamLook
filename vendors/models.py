@@ -96,39 +96,4 @@ class ShopReview(models.Model):
     def __str__(self):
         return f"Review by {self.reviewer} for {self.shop.shop_name}"
 
-class VendorChatSession(models.Model):
-    buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='initiated_vendor_chats')
-    vendor = models.ForeignKey(ShopProfile, on_delete=models.CASCADE, related_name='received_vendor_chats')
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        unique_together = ('buyer', 'vendor') 
-
-    def __str__(self):
-        # Fallback to username or email if phone_number doesn't exist
-        buyer_identifier = getattr(self.buyer, 'phone_number', getattr(self.buyer, 'username', getattr(self.buyer, 'email', str(self.buyer.id))))
-        return f"Chat between {buyer_identifier} & {self.vendor.shop_name}"
-
-
-class VendorChatMessage(models.Model):
-    MESSAGE_TYPE_CHOICES = (
-        ('TEXT', 'Text'),
-        ('IMAGE', 'Image'),
-        ('SYSTEM_ALERT', 'System Alert'),
-        ('INVOICE', 'Invoice'),
-    )
-    session = models.ForeignKey(VendorChatSession, on_delete=models.CASCADE, related_name='messages')
-    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_vendor_messages')
-    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default='TEXT')
-    message = models.TextField(blank=True, null=True)
-    attachment = models.FileField(upload_to='vendors/chats/', blank=True, null=True)
-    is_read = models.BooleanField(default=False)
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
-
-    class Meta:
-        ordering = ['-timestamp']
-
-    def __str__(self):
-        return f"Message {self.id} in Session {self.session_id}"

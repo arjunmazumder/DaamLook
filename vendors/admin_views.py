@@ -6,8 +6,8 @@ from rest_framework.filters import SearchFilter
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from .models import ShopProfile, VendorChatSession
-from .serializers import ShopProfileSerializer, VendorChatSessionSerializer, VendorChatMessageSerializer
+from .models import ShopProfile
+from .serializers import ShopProfileSerializer
 from users.permissions import IsAdminOrSuperAdmin
 
 class AdminVendorRatingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -81,42 +81,4 @@ class AdminVendorRatingViewSet(viewsets.ReadOnlyModelViewSet):
         
         return Response(self.get_serializer(shop).data)
 
-class AdminVendorChatViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Dedicated Admin API for monitoring Vendor-Buyer chats.
-    """
-    queryset = VendorChatSession.objects.all().order_by('-updated_at')
-    serializer_class = VendorChatSessionSerializer
-    permission_classes = [IsAdminOrSuperAdmin]
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    
-    # Enable filtering by active status
-    filterset_fields = ['is_active']
-    # Enable text search by shop name or buyer phone
-    search_fields = ['vendor__shop_name', 'buyer__phone_number', 'buyer__username', 'buyer__email']
 
-    @swagger_auto_schema(
-        tags=['Admin Panel'],
-        operation_summary="List all Vendor Chat Sessions"
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Admin Panel'],
-        operation_summary="Get specific Vendor Chat Session details"
-    )
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Admin Panel'],
-        operation_summary="Get Chat Messages for a Session",
-        responses={200: VendorChatMessageSerializer(many=True)}
-    )
-    @action(detail=True, methods=['get'])
-    def messages(self, request, pk=None):
-        session = self.get_object()
-        messages = session.messages.all().order_by('timestamp')
-        serializer = VendorChatMessageSerializer(messages, many=True)
-        return Response(serializer.data)

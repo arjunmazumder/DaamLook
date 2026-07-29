@@ -55,3 +55,48 @@ class Commission(models.Model):
         if self.servicecategory:
             return f"Commission for Service Category: {self.servicecategory.name}"
         return "Global Commission"
+
+
+class GlobalChatSession(models.Model):
+    CHAT_TYPE_CHOICES = (
+        ('VENDOR', 'Vendor Chat'),
+        ('SERVICE', 'Service Provider Chat'),
+    )
+    buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='global_chats_as_buyer')
+    seller = models.ForeignKey(User, on_delete=models.CASCADE, related_name='global_chats_as_seller')
+    chat_type = models.CharField(max_length=20, choices=CHAT_TYPE_CHOICES)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('buyer', 'seller', 'chat_type')
+
+    def __str__(self):
+        return f"{self.chat_type} Chat: {self.buyer.phone_number} & {self.seller.phone_number}"
+
+class GlobalChatMessage(models.Model):
+    MESSAGE_TYPE_CHOICES = (
+        ('TEXT', 'Text'),
+        ('IMAGE', 'Image'),
+        ('SYSTEM_ALERT', 'System Alert'),
+        ('INVOICE', 'Invoice'),
+    )
+    session = models.ForeignKey(GlobalChatSession, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_global_messages')
+    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default='TEXT')
+    message = models.TextField(blank=True, null=True)
+    attachment = models.FileField(upload_to='chats/', blank=True, null=True)
+    is_read = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"Message {self.id} in Session {self.session_id}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Touch the session to update its updated_at field for Inbox sorting
+        self.session.save(update_fields=['updated_at'])

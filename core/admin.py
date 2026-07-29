@@ -25,3 +25,17 @@ class CommissionAdmin(admin.ModelAdmin):
     list_display = ('id', 'category', 'servicecategory', 'percentage', 'flat', 'created_at')
     list_filter = ('category', 'servicecategory', 'created_at')
     search_fields = ('category__name', 'servicecategory__name')
+
+from .models import GlobalChatSession, GlobalChatMessage
+
+@admin.register(GlobalChatSession)
+class GlobalChatSessionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'buyer', 'seller', 'chat_type', 'is_active', 'updated_at')
+    list_filter = ('chat_type', 'is_active')
+    search_fields = ('buyer__phone_number', 'seller__phone_number')
+
+@admin.register(GlobalChatMessage)
+class GlobalChatMessageAdmin(admin.ModelAdmin):
+    list_display = ('id', 'session', 'sender', 'message_type', 'is_read', 'timestamp')
+    list_filter = ('message_type', 'is_read')
+    search_fields = ('message', 'sender__phone_number')

@@ -3,8 +3,8 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
-from .models import ShopProfile, ShopReview, VendorChatSession, VendorChatMessage, City
-from .serializers import ShopProfileSerializer, ShopReviewSerializer, VendorChatSessionSerializer, VendorChatMessageSerializer, CitySerializer
+from .models import ShopProfile, ShopReview, City
+from .serializers import ShopProfileSerializer, ShopReviewSerializer, CitySerializer
 from drf_yasg.utils import swagger_auto_schema
 from django.utils.decorators import method_decorator
 
@@ -122,57 +122,4 @@ class ShopReviewViewSet(viewsets.ModelViewSet):
             raise exceptions.PermissionDenied("You can only delete your own review.")
         instance.delete()
 
-class VendorChatSessionViewSet(viewsets.ModelViewSet):
-    serializer_class = VendorChatSessionSerializer
-    permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
-        # A user can see the chat if they are the buyer or the vendor owner
-        return VendorChatSession.objects.filter(Q(buyer=user) | Q(vendor__user=user))
-
-    @action(detail=False, methods=['post'])
-    def initiate(self, request):
-        shop_id = request.data.get('shop_id')
-        if not shop_id:
-            return Response({"error": "shop_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            vendor = ShopProfile.objects.get(id=shop_id)
-        except ShopProfile.DoesNotExist:
-            return Response({"error": "Vendor not found"}, status=status.HTTP_404_NOT_FOUND)
-
-        if vendor.user == request.user:
-            return Response({"error": "You cannot chat with yourself."}, status=status.HTTP_400_BAD_REQUEST)
-
-        session, created = VendorChatSession.objects.get_or_create(
-            buyer=request.user,
-            vendor=vendor
-        )
-        serializer = self.get_serializer(session)
-        return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
-
-
-class VendorChatMessageViewSet(viewsets.ModelViewSet):
-    serializer_class = VendorChatMessageSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        session_id = self.request.query_params.get('session_id')
-        
-        qs = VendorChatMessage.objects.filter(
-            Q(session__buyer=user) | Q(session__vendor__user=user)
-        )
-        if session_id:
-            qs = qs.filter(session_id=session_id)
-        return qs
-
-    def perform_create(self, serializer):
-        session = serializer.validated_data.get('session')
-        user = self.request.user
-
-        if session.buyer != user and session.vendor.user != user:
-            raise exceptions.PermissionDenied("You are not part of this chat session.")
-
-        serializer.save(sender=user)

@@ -2,8 +2,8 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .admin_views import AdminLoginView, PermissionListView, RoleViewSet, StaffViewSet
 from orders.admin_views import AdminProductOrderMonitoringViewSet
-from services.admin_views import AdminServiceBookingMonitoringViewSet, AdminProviderRatingViewSet, AdminServiceChatViewSet
-from vendors.admin_views import AdminVendorRatingViewSet, AdminVendorChatViewSet
+from services.admin_views import AdminServiceBookingMonitoringViewSet, AdminProviderRatingViewSet
+from vendors.admin_views import AdminVendorRatingViewSet
 from core.admin_views import AdminAnalyticsDashboardAPIView, BroadcastAnnouncementViewSet
 
 router = DefaultRouter()
@@ -13,8 +13,7 @@ router.register(r'monitoring/product-orders', AdminProductOrderMonitoringViewSet
 router.register(r'monitoring/service-bookings', AdminServiceBookingMonitoringViewSet, basename='admin-monitoring-services')
 router.register(r'ratings/vendors', AdminVendorRatingViewSet, basename='admin-ratings-vendors')
 router.register(r'ratings/service-providers', AdminProviderRatingViewSet, basename='admin-ratings-providers')
-router.register(r'chats/vendors', AdminVendorChatViewSet, basename='admin-chats-vendors')
-router.register(r'chats/service-providers', AdminServiceChatViewSet, basename='admin-chats-providers')
+
 router.register(r'broadcast', BroadcastAnnouncementViewSet, basename='admin-broadcast')
 
 urlpatterns = [

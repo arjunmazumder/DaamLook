@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ShopProfile, ShopReview, VendorChatSession, VendorChatMessage, City
+from .models import ShopProfile, ShopReview, City
 
 class CitySerializer(serializers.ModelSerializer):
     class Meta:
@@ -36,33 +36,4 @@ class ShopReviewSerializer(serializers.ModelSerializer):
                 
         return attrs
 
-class VendorChatMessageSerializer(serializers.ModelSerializer):
-    sender_name = serializers.SerializerMethodField()
 
-    class Meta:
-        model = VendorChatMessage
-        fields = '__all__'
-        read_only_fields = ['sender', 'timestamp', 'is_read']
-
-    def get_sender_name(self, obj):
-        return getattr(obj.sender, 'phone_number', getattr(obj.sender, 'username', getattr(obj.sender, 'email', str(obj.sender.id))))
-
-
-class VendorChatSessionSerializer(serializers.ModelSerializer):
-    buyer_identifier = serializers.SerializerMethodField()
-    shop_name = serializers.CharField(source='vendor.shop_name', read_only=True)
-    last_message = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = VendorChatSession
-        fields = '__all__'
-        read_only_fields = ['buyer', 'vendor', 'created_at', 'updated_at']
-
-    def get_buyer_identifier(self, obj):
-        return getattr(obj.buyer, 'phone_number', getattr(obj.buyer, 'username', getattr(obj.buyer, 'email', str(obj.buyer.id))))
-
-    def get_last_message(self, obj):
-        last_msg = obj.messages.order_by('-timestamp').first()
-        if last_msg:
-            return VendorChatMessageSerializer(last_msg).data
-        return None

@@ -37,35 +37,9 @@ class NearbyProviderSerializer(serializers.Serializer):
     latitude = serializers.FloatField()
     longitude = serializers.FloatField()
 
-from .models import ChatSession, ChatMessage, ServiceBooking
+from .models import ServiceBooking
 
-class ChatMessageSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ChatMessage
-        fields = ['id', 'session', 'sender', 'message_type', 'message', 'attachment', 'is_read', 'timestamp']
-        read_only_fields = ['id', 'timestamp']
 
-class ChatSessionSerializer(serializers.ModelSerializer):
-    latest_message = serializers.SerializerMethodField()
-    unread_count = serializers.SerializerMethodField()
-    provider_shop_name = serializers.CharField(source='provider.shop_name', read_only=True)
-    buyer_name = serializers.CharField(source='buyer.first_name', read_only=True) # Assuming user has first_name
-
-    class Meta:
-        model = ChatSession
-        fields = ['id', 'buyer', 'buyer_name', 'provider', 'provider_shop_name', 'is_active', 'created_at', 'updated_at', 'latest_message', 'unread_count']
-
-    def get_latest_message(self, obj):
-        message = obj.messages.first()
-        if message:
-            return ChatMessageSerializer(message).data
-        return None
-    
-    def get_unread_count(self, obj):
-        request = self.context.get('request')
-        if request and hasattr(request, 'user'):
-            return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
-        return 0
 
 class ServiceBookingSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)

@@ -44,39 +44,6 @@ class Recentwork(models.Model):
     def __str__(self):
         return self.title
 
-class ChatSession(models.Model):
-    buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='initiated_chats')
-    provider = models.ForeignKey(ServiceProviderBusinessProfile, on_delete=models.CASCADE, related_name='received_chats')
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        unique_together = ('buyer', 'provider') 
-
-    def __str__(self):
-        return f"Chat between {self.buyer.phone_number} & {self.provider.shop_name}"
-
-class ChatMessage(models.Model):
-    MESSAGE_TYPE_CHOICES = (
-        ('TEXT', 'Text'),
-        ('IMAGE', 'Image'),
-        ('SYSTEM_ALERT', 'System Alert'),
-        ('INVOICE', 'Invoice'),
-    )
-    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE, related_name='messages')
-    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
-    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default='TEXT')
-    message = models.TextField(blank=True, null=True)
-    attachment = models.FileField(upload_to='services/chats/', blank=True, null=True)
-    is_read = models.BooleanField(default=False)
-    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
-
-    class Meta:
-        ordering = ['-timestamp']
-
-    def __str__(self):
-        return f"Message {self.id} in Session {self.session_id}"
 
 class ServiceBooking(models.Model):
     STATUS_CHOICES = (
@@ -93,7 +60,7 @@ class ServiceBooking(models.Model):
     # service_number = models.CharField(max_length=20, unique=True, blank=True, null=True)
     buyer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='service_bookings')
     provider = models.ForeignKey(ServiceProviderBusinessProfile, on_delete=models.CASCADE, related_name='received_bookings')
-    chat_session = models.OneToOneField(ChatSession, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_booking')
+    chat_session = models.OneToOneField('core.GlobalChatSession', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoice_booking')
     category = models.ForeignKey(ServiceCategory, on_delete=models.SET_NULL, null=True, related_name='bookings')
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='PENDING')
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS_CHOICES, default='UNPAID')

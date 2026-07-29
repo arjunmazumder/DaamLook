@@ -3,10 +3,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from .models import ActiveUser, ActiveCustomer
-from .serializers import UpdateLocationSerializer, UpdateCustomerLocationSerializer, UnifiedChatStartSerializer
+from .serializers import UpdateLocationSerializer, UpdateCustomerLocationSerializer
 from .utils import cleanup_inactive_locations
-from services.models import ServiceProviderBusinessProfile, ChatSession
-from vendors.models import ShopProfile, VendorChatSession
+
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
@@ -97,58 +96,137 @@ class CommissionViewSet(viewsets.ModelViewSet):
     serializer_class = CommissionSerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
 
-class UnifiedChatStartView(APIView):
+from rest_framework import exceptions
+from django.db.models import Q
+from .models import GlobalChatSession, GlobalChatMessage
+from .serializers import GlobalChatSessionSerializer, GlobalChatMessageSerializer
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+chat_type_param = openapi.Parameter(
+    'chat_type', openapi.IN_QUERY, description="Filter sessions by type: VENDOR or SERVICE", type=openapi.TYPE_STRING
+)
+
+@method_decorator(name='list', decorator=swagger_auto_schema(tags=['Chatting System'], manual_parameters=[chat_type_param]))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['Chatting System']))
+class GlobalChatSessionViewSet(viewsets.ModelViewSet):
+    serializer_class = GlobalChatSessionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = GlobalChatSession.objects.filter(Q(buyer=user) | Q(seller=user)).order_by('-updated_at')
+        chat_type = self.request.query_params.get('chat_type')
+        if chat_type:
+            qs = qs.filter(chat_type=chat_type.upper())
+        return qs
+
+    def perform_create(self, serializer):
+        seller = serializer.validated_data.get('seller')
+        if seller == self.request.user:
+            raise exceptions.ValidationError({"error": "You cannot chat with yourself."})
+        serializer.save(buyer=self.request.user)
+
+session_id_param = openapi.Parameter(
+    'session_id', openapi.IN_QUERY, description="ID of the chat session to filter messages", type=openapi.TYPE_INTEGER
+)
+
+@method_decorator(name='list', decorator=swagger_auto_schema(tags=['Chatting System'], manual_parameters=[session_id_param]))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['Chatting System']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['Chatting System']))
+class GlobalChatMessageViewSet(viewsets.ModelViewSet):
+    serializer_class = GlobalChatMessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        session_id = self.request.query_params.get('session_id')
+        
+        qs = GlobalChatMessage.objects.filter(
+            Q(session__buyer=user) | Q(session__seller=user)
+        )
+        if session_id:
+            qs = qs.filter(session_id=session_id)
+        return qs
+
+    def perform_create(self, serializer):
+        session = serializer.validated_data.get('session')
+        user = self.request.user
+
+        if session.buyer != user and session.seller != user:
+            raise exceptions.PermissionDenied("You are not part of this chat session.")
+
+        message = serializer.save(sender=user)
+
+        # Broadcast the message to the WebSocket group so the other person gets it instantly
+        channel_layer = get_channel_layer()
+        room_group_name = f'global_chat_{session.id}'
+        async_to_sync(channel_layer.group_send)(
+            room_group_name,
+            {
+                'type': 'chat_message',
+                'id': message.id,
+                'message': message.message,
+                'message_type': message.message_type,
+                'sender_id': message.sender.id,
+                'timestamp': str(message.timestamp)
+            }
+        )
+
+class InboxContactsView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_summary="Unified Chat Start",
-        operation_description="Start a chat with a Service Provider OR a Vendor. Pass `provider_id` to chat with a service provider, or `shop_id` to chat with a vendor.",
-        request_body=UnifiedChatStartSerializer,
-        responses={
-            201: openapi.Schema(
-                type=openapi.TYPE_OBJECT,
-                properties={
-                    'session_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='The ID of the Chat Session created'),
-                    'chat_type': openapi.Schema(type=openapi.TYPE_STRING, description='"service" or "vendor"'),
-                    'created': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='True if newly created')
-                }
-            )
-        },
-        tags=['Core Chat']
+        operation_summary="Get WhatsApp-like Inbox",
+        operation_description="Returns a dedicated WhatsApp-like list of people the user is chatting with, ordered by most recent message.",
+        manual_parameters=[
+            openapi.Parameter('chat_type', openapi.IN_QUERY, description="Optional. Filter by VENDOR or SERVICE", type=openapi.TYPE_STRING)
+        ],
+        tags=['Chatting System']
     )
-    def post(self, request):
-        provider_id = request.data.get('provider_id')
-        shop_id = request.data.get('shop_id')
-
-        if provider_id:
-            try:
-                provider = ServiceProviderBusinessProfile.objects.get(id=provider_id)
-            except ServiceProviderBusinessProfile.DoesNotExist:
-                return Response({"error": "Service Provider not found"}, status=status.HTTP_404_NOT_FOUND)
-
-            if provider.provider == request.user:
-                return Response({"error": "You cannot chat with yourself."}, status=status.HTTP_400_BAD_REQUEST)
-
-            session, created = ChatSession.objects.get_or_create(
-                buyer=request.user,
-                provider=provider
-            )
-            return Response({"session_id": session.id, "chat_type": "service", "created": created}, status=status.HTTP_201_CREATED)
-
-        elif shop_id:
-            try:
-                vendor = ShopProfile.objects.get(id=shop_id)
-            except ShopProfile.DoesNotExist:
-                return Response({"error": "Vendor not found"}, status=status.HTTP_404_NOT_FOUND)
-
-            if vendor.user == request.user:
-                return Response({"error": "You cannot chat with yourself."}, status=status.HTTP_400_BAD_REQUEST)
-
-            session, created = VendorChatSession.objects.get_or_create(
-                buyer=request.user,
-                vendor=vendor
-            )
-            return Response({"session_id": session.id, "chat_type": "vendor", "created": created}, status=status.HTTP_201_CREATED)
-
-        else:
-            return Response({"error": "Either provider_id or shop_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+    def get(self, request):
+        user = request.user
+        qs = GlobalChatSession.objects.filter(Q(buyer=user) | Q(seller=user)).order_by('-updated_at')
+        
+        chat_type = request.query_params.get('chat_type')
+        if chat_type:
+            qs = qs.filter(chat_type=chat_type.upper())
+            
+        data = []
+        for session in qs:
+            is_buyer = session.buyer == user
+            contact_user = session.seller if is_buyer else session.buyer
+            
+            latest_msg = session.messages.first()
+            latest_msg_data = None
+            if latest_msg:
+                latest_msg_data = {
+                    "id": latest_msg.id,
+                    "message": latest_msg.message,
+                    "message_type": latest_msg.message_type,
+                    "timestamp": latest_msg.timestamp,
+                    "is_read": latest_msg.is_read,
+                    "sender_id": latest_msg.sender_id
+                }
+                
+            unread_count = session.messages.filter(is_read=False).exclude(sender=user).count()
+            
+            data.append({
+                "session_id": session.id,
+                "chat_type": session.chat_type,
+                "contact_id": contact_user.id,
+                "contact_phone": getattr(contact_user, 'phone_number', getattr(contact_user, 'username', str(contact_user.id))),
+                "contact_role": "SELLER" if is_buyer else "BUYER",
+                "updated_at": session.updated_at,
+                "unread_count": unread_count,
+                "latest_message": latest_msg_data
+            })
+            
+        return Response(data, status=status.HTTP_200_OK)

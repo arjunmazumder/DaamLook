@@ -2,8 +2,6 @@ from django.contrib import admin
 from .models import (
     ServiceCategory,
     ServiceProviderBusinessProfile,
-    ChatSession,
-    ChatMessage,
     ServiceBooking,
     ServiceProviderNotification,
     ServiceProviderReview,
@@ -28,17 +26,7 @@ class RecentworkAdmin(admin.ModelAdmin):
     list_display = ('title', 'provider', 'created_at')
     search_fields = ('title', 'provider__shop_name')
 
-@admin.register(ChatSession)
-class ChatSessionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'buyer', 'provider', 'is_active', 'updated_at')
-    list_filter = ('is_active',)
-    search_fields = ('buyer__phone_number', 'provider__shop_name')
 
-@admin.register(ChatMessage)
-class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ('id', 'session', 'sender', 'message_type', 'is_read', 'timestamp')
-    list_filter = ('message_type', 'is_read')
-    search_fields = ('message', 'sender__phone_number')
 
 @admin.register(ServiceBooking)
 class ServiceBookingAdmin(admin.ModelAdmin):

@@ -6,8 +6,8 @@ from rest_framework.filters import SearchFilter
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-from .models import ServiceBooking, ServiceProviderBusinessProfile, ChatSession
-from .serializers import ServiceBookingSerializer, ServiceProviderBusinessProfileSerializer, ChatSessionSerializer, ChatMessageSerializer
+from .models import ServiceBooking, ServiceProviderBusinessProfile
+from .serializers import ServiceBookingSerializer, ServiceProviderBusinessProfileSerializer
 from users.permissions import IsAdminOrSuperAdmin
 
 class AdminServiceBookingMonitoringViewSet(viewsets.ReadOnlyModelViewSet):
@@ -139,42 +139,4 @@ class AdminProviderRatingViewSet(viewsets.ReadOnlyModelViewSet):
         
         return Response(self.get_serializer(provider).data)
     
-class AdminServiceChatViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    Dedicated Admin API for monitoring Service Provider-Buyer chats.
-    """
-    queryset = ChatSession.objects.all().order_by('-updated_at')
-    serializer_class = ChatSessionSerializer
-    permission_classes = [IsAdminOrSuperAdmin]
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    
-    # Enable filtering by active status
-    filterset_fields = ['is_active']
-    # Enable text search by shop name or buyer phone
-    search_fields = ['provider__shop_name', 'buyer__phone_number', 'buyer__username', 'buyer__email']
 
-    @swagger_auto_schema(
-        tags=['Admin Panel'],
-        operation_summary="List all Service Chat Sessions"
-    )
-    def list(self, request, *args, **kwargs):
-        return super().list(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Admin Panel'],
-        operation_summary="Get specific Service Chat Session details"
-    )
-    def retrieve(self, request, *args, **kwargs):
-        return super().retrieve(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Admin Panel'],
-        operation_summary="Get Chat Messages for a Session",
-        responses={200: ChatMessageSerializer(many=True)}
-    )
-    @action(detail=True, methods=['get'])
-    def messages(self, request, pk=None):
-        session = self.get_object()
-        messages = session.messages.all().order_by('timestamp')
-        serializer = ChatMessageSerializer(messages, many=True)
-        return Response(serializer.data)
