@@ -225,8 +225,22 @@ class ServiceInvoice(models.Model):
                 
         service_comm, created = ServiceCommission.objects.get_or_create(invoice=self)
         if service_comm.commission_amount != calculated_commission:
+            difference = calculated_commission - service_comm.commission_amount
             service_comm.commission_amount = calculated_commission
             service_comm.save(update_fields=['commission_amount', 'updated_at'])
+            
+            if difference != Decimal('0.00') and self.booking and self.booking.provider and self.booking.provider.provider:
+                from wallets.models import Wallet, WalletTransaction
+                wallet, _ = Wallet.objects.get_or_create(user=self.booking.provider.provider)
+                wallet.balance -= difference
+                wallet.save(update_fields=['balance', 'updated_at'])
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type='OUT' if difference > 0 else 'IN',
+                    amount=abs(difference),
+                    service_commission=service_comm,
+                    description=f"Commission adjustment for Service Invoice {self.invoice_number}"
+                )
 
     def __str__(self):
         return f"{self.invoice_number} for Booking {self.booking.id}"

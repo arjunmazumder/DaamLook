@@ -83,3 +83,24 @@ class StaffCreateSerializer(serializers.ModelSerializer):
             user.groups.set(groups)
             
         return user
+
+
+class StaffUpdateSerializer(serializers.ModelSerializer):
+    group_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Group.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+        source='groups'
+    )
+
+    class Meta:
+        model = User
+        fields = ('full_name', 'is_active', 'group_ids')
+
+    def update(self, instance, validated_data):
+        groups = validated_data.pop('groups', None)
+        instance = super().update(instance, validated_data)
+        if groups is not None:
+            instance.groups.set(groups)
+        return instance

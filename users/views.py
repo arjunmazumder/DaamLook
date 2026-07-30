@@ -724,3 +724,54 @@ class BuyerLoginVerifyView(APIView):
             set_auth_cookies(response, access_token, refresh_token)
             return response
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+from .models import ShippingAddress
+from .serializers import ShippingAddressSerializer
+
+class ShippingAddressView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(tags=['Users'], responses={200: ShippingAddressSerializer()})
+    def get(self, request):
+        try:
+            address = request.user.shipping_address
+            serializer = ShippingAddressSerializer(address)
+            return Response(serializer.data)
+        except ShippingAddress.DoesNotExist:
+            return Response({"detail": "Shipping address not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    @swagger_auto_schema(tags=['Users'], request_body=ShippingAddressSerializer, responses={201: ShippingAddressSerializer()})
+    def post(self, request):
+        if hasattr(request.user, 'shipping_address'):
+            return Response({"detail": "Shipping address already exists. Use PUT or PATCH to update."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        serializer = ShippingAddressSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(tags=['Users'], request_body=ShippingAddressSerializer, responses={200: ShippingAddressSerializer()})
+    def put(self, request):
+        try:
+            address = request.user.shipping_address
+        except ShippingAddress.DoesNotExist:
+            return Response({"detail": "Shipping address not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = ShippingAddressSerializer(address, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(tags=['Users'], request_body=ShippingAddressSerializer, responses={200: ShippingAddressSerializer()})
+    def patch(self, request):
+        return self.put(request)
+
+    @swagger_auto_schema(tags=['Users'], responses={204: "No Content"})
+    def delete(self, request):
+        try:
+            request.user.shipping_address.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except ShippingAddress.DoesNotExist:
+            return Response({"detail": "Shipping address not found."}, status=status.HTTP_404_NOT_FOUND)

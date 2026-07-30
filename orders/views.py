@@ -247,14 +247,11 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
             "delivery_charge_breakdown": breakdown
         }, status=status.HTTP_200_OK)
     @swagger_auto_schema(
+        operation_description="Checkout cart items and create an order. Automatically uses the user's saved ShippingAddress (including city).",
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            required=['shipping_address', 'contact_phone', 'buyer_city_id'],
             properties={
-                'shipping_address': openapi.Schema(type=openapi.TYPE_STRING, description='Shipping Address'),
-                'contact_phone': openapi.Schema(type=openapi.TYPE_STRING, description='Contact Phone Number'),
                 'payment_method': openapi.Schema(type=openapi.TYPE_STRING, description='Payment Method (COD or ONLINE)'),
-                'buyer_city_id': openapi.Schema(type=openapi.TYPE_INTEGER, description='ID of the buyer selected City'),
             }
         ),
         responses={201: OrderSerializer()}
@@ -267,13 +264,18 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet):
         if not cart or not cart.items.exists():
             return Response({"error": "Your cart is empty"}, status=status.HTTP_400_BAD_REQUEST)
 
-        shipping_address = request.data.get('shipping_address')
-        contact_phone = request.data.get('contact_phone')
-        payment_method = request.data.get('payment_method', 'COD')
-        buyer_city_id = request.data.get('buyer_city_id')
+        # Automatically fetch ShippingAddress
+        if not hasattr(user, 'shipping_address') or not user.shipping_address:
+            return Response({"error": "Shipping address is missing. Please add a shipping address before checkout."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not shipping_address or not contact_phone or not buyer_city_id:
-            return Response({"error": "Shipping address, contact phone, and buyer_city_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+        shipping_address = user.shipping_address.address
+        contact_phone = user.shipping_address.phone_number
+        buyer_city_id = user.shipping_address.city_id
+
+        if not buyer_city_id:
+            return Response({"error": "Your shipping address is missing a city. Please update your shipping address."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payment_method = request.data.get('payment_method', 'COD')
 
         # Create main order
         order = Order.objects.create(

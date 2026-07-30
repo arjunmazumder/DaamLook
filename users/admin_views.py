@@ -33,7 +33,7 @@ class AdminLoginView(APIView):
                 "message": "Admin login successful.",
                 "data": {
                     "access_token": access_token,
-                    "user": UserWithProfileSerializer(user).data
+                    "user": StaffSerializer(user).data
                 }
             }
             
@@ -95,6 +95,9 @@ class StaffViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return StaffCreateSerializer
+        if self.action in ['update', 'partial_update']:
+            from .admin_serializers import StaffUpdateSerializer
+            return StaffUpdateSerializer
         return StaffSerializer
 
     @swagger_auto_schema(tags=['Admin Panel'], operation_summary="List all Staff users")

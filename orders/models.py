@@ -96,10 +96,24 @@ class Order(models.Model):
                 new_applied_flat = commission_setting.flat if commission_setting and commission_setting.flat else Decimal('0.00')
                 
                 if order_comm.commission_amount != calculated_commission or order_comm.applied_percentage != new_applied_pct or order_comm.applied_flat != new_applied_flat:
+                    difference = calculated_commission - order_comm.commission_amount
                     order_comm.commission_amount = calculated_commission
                     order_comm.applied_percentage = new_applied_pct
                     order_comm.applied_flat = new_applied_flat
                     order_comm.save(update_fields=['commission_amount', 'applied_percentage', 'applied_flat', 'updated_at'])
+                    
+                    if difference != Decimal('0.00') and item.shop and item.shop.user:
+                        from wallets.models import Wallet, WalletTransaction
+                        wallet, _ = Wallet.objects.get_or_create(user=item.shop.user)
+                        wallet.balance -= difference
+                        wallet.save(update_fields=['balance', 'updated_at'])
+                        WalletTransaction.objects.create(
+                            wallet=wallet,
+                            transaction_type='OUT' if difference > 0 else 'IN',
+                            amount=abs(difference),
+                            order_commission=order_comm,
+                            description=f"Commission adjustment for Order {self.order_number}"
+                        )
 
     def __str__(self):
         return f"Order {self.order_number} by {self.buyer.phone_number}"

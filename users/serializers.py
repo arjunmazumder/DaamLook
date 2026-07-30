@@ -175,3 +175,10 @@ class BuyerLoginSerializer(serializers.Serializer):
 class BuyerLoginVerifySerializer(serializers.Serializer):
     phone_number = serializers.CharField(max_length=15)
     otp_code = serializers.CharField(max_length=6)
+
+from .models import ShippingAddress
+class ShippingAddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ShippingAddress
+        fields = ['id', 'full_name', 'phone_number', 'city', 'address', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
