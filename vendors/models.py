@@ -43,6 +43,7 @@ class ShopProfile(models.Model):
     average_rating = models.FloatField(default=0.0)
     total_reviews = models.IntegerField(default=0)
     admin_rating_adjustment = models.FloatField(default=0.0, help_text="Manual rating adjustment by admin")
+    is_blocked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

@@ -10,6 +10,25 @@ class Wallet(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        should_block = self.balance < -self.credit_limit
+        
+        # Check and update vendor shop profile
+        if hasattr(self.user, 'vendor_shop_profile'):
+            profile = self.user.vendor_shop_profile
+            if profile.is_blocked != should_block:
+                profile.is_blocked = should_block
+                profile.save(update_fields=['is_blocked', 'updated_at'])
+
+        # Check and update service provider business profile
+        if hasattr(self.user, 'business_profile'):
+            profile = self.user.business_profile
+            if profile.is_blocked != should_block:
+                profile.is_blocked = should_block
+                profile.save(update_fields=['is_blocked', 'updated_at'])
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"Wallet for {self.user} - Balance: {self.balance}"
 

@@ -106,3 +106,14 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
             },
             'total_bill': str(invoice.total_amount)
         }
+
+class UpdateCreditLimitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Wallet
+        fields = ['credit_limit']
+
+from decimal import Decimal
+
+class AddDiscountSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
+    description = serializers.CharField(max_length=255, required=False, allow_blank=True)

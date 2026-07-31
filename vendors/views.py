@@ -29,7 +29,11 @@ class ShopProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        queryset = ShopProfile.objects.all()
+        if self.request.user.is_staff or self.request.user.is_superuser:
+            queryset = ShopProfile.objects.all()
+        else:
+            queryset = ShopProfile.objects.filter(is_blocked=False)
+            
         shop_type = self.request.query_params.get('shop_type')
         search = self.request.query_params.get('search')
 

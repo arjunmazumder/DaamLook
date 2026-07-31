@@ -1,6 +1,8 @@
 from django.urls import path, include
+from wallets.admin_views import BlockedProfilesAPIView
 
 urlpatterns = [
+    path('blocked-profiles/', BlockedProfilesAPIView.as_view(), name='blocked-profiles'),
     path('admin/', include('users.admin_urls')),
     path('auth/', include('users.urls')),
     path('lookup/', include('lookup.urls')),

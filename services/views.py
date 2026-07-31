@@ -23,10 +23,20 @@ class ServiceProviderBusinessProfileViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['categories']
 
+    def get_queryset(self):
+        if self.request.user.is_staff or self.request.user.is_superuser:
+            return ServiceProviderBusinessProfile.objects.all()
+        return ServiceProviderBusinessProfile.objects.filter(is_blocked=False)
+
 class RecentworkViewSet(viewsets.ModelViewSet):
     queryset = Recentwork.objects.all()
     serializer_class = RecentworkSerializer
     permission_classes = [IsAdminOrSuperAdminOrServiceProvider]
+
+    def get_queryset(self):
+        if self.request.user.is_staff or self.request.user.is_superuser:
+            return Recentwork.objects.all()
+        return Recentwork.objects.filter(provider__is_blocked=False)
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -70,7 +80,8 @@ class FindNearbyProvidersView(APIView):
             updated_at__gte=five_mins_ago,
             latitude__isnull=False,
             longitude__isnull=False,
-            user__business_profile__categories=desired_category
+            user__business_profile__categories=desired_category,
+            user__business_profile__is_blocked=False
         ).select_related('user__business_profile')
 
         # 3. Calculate distance and filter by 1km

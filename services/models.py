@@ -27,6 +27,7 @@ class ServiceProviderBusinessProfile(models.Model):
     work_day = models.CharField(max_length=100, blank=True, null=True)
     available_time = models.CharField(max_length=100, blank=True, null=True)
     total_complete_worked = models.IntegerField(default=0)
+    is_blocked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

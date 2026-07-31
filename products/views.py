@@ -71,7 +71,9 @@ class ProductViewSet(viewsets.ModelViewSet):
             return Product.objects.none()
 
         # Always return only APPROVED and active products for this endpoint
-        return Product.objects.filter(approval_status='APPROVED', is_active=True)
+        if self.request.user.is_authenticated and (self.request.user.is_staff or self.request.user.is_superuser):
+            return Product.objects.filter(approval_status='APPROVED', is_active=True)
+        return Product.objects.filter(approval_status='APPROVED', is_active=True, shop__is_blocked=False)
 
     def perform_create(self, serializer):
         user = self.request.user
