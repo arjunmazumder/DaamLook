@@ -118,7 +118,13 @@ class GlobalChatSessionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return GlobalChatSession.objects.none()
+        
         user = self.request.user
+        if not user.is_authenticated:
+            return GlobalChatSession.objects.none()
+
         qs = GlobalChatSession.objects.filter(Q(buyer=user) | Q(seller=user)).order_by('-updated_at')
         chat_type = self.request.query_params.get('chat_type')
         if chat_type:
@@ -146,7 +152,13 @@ class GlobalChatMessageViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return GlobalChatMessage.objects.none()
+        
         user = self.request.user
+        if not user.is_authenticated:
+            return GlobalChatMessage.objects.none()
+
         session_id = self.request.query_params.get('session_id')
         
         qs = GlobalChatMessage.objects.filter(

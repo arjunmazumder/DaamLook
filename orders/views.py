@@ -343,43 +343,6 @@ class AdminOrderViewSet(viewsets.ModelViewSet):
         if order.status != 'PENDING_ADMIN_APPROVAL':
             return Response({"error": f"Order is already {order.status}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Group items by shop and create VendorOrders
-        shop_items = {}
-        for item in order.items.all():
-            if item.shop not in shop_items:
-                shop_items[item.shop] = []
-            shop_items[item.shop].append(item)
-
-        delivery_rates = DeliveryCharge.objects.first()
-
-        for shop, items in shop_items.items():
-            subtotal = sum(i.quantity * i.unit_price for i in items)
-            
-            # Calculate this specific shop's delivery charge
-            delivery_charge = 0
-            if delivery_rates:
-                if shop.city_id and str(shop.city_id) == str(order.buyer_city_id):
-                    delivery_charge = delivery_rates.inside_city
-                else:
-                    delivery_charge = delivery_rates.outside_city
-                    
-            vendor_order = VendorOrder.objects.create(
-                parent_order=order,
-                vendor_shop=shop,
-                subtotal_amount=subtotal,
-                delivery_charge=delivery_charge,
-                status='PROCESSING'
-            )
-            # Update items to link to this vendor order
-            for item in items:
-                item.vendor_order = vendor_order
-                item.save()
-                
-                # Deduct stock ONLY upon approval
-                if item.product:
-                    item.product.stock_quantity -= item.quantity
-                    item.product.save()
-
         order.status = 'APPROVED'
         order.save()
 
@@ -411,10 +374,20 @@ class AdminOrderViewSet(viewsets.ModelViewSet):
 
 class VendorOrderViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    For Vendors to view and update their own sub-orders.
+    For Vendors to view, update status, and delete their own sub-orders.
     """
     serializer_class = VendorOrderSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    @swagger_auto_schema(
+        tags=['orders'],
+        operation_summary="Delete a Vendor Order",
+        operation_description="Allows a vendor to permanently delete their order."
+    )
+    def destroy(self, request, *args, **kwargs):
+        vendor_order = self.get_object()
+        vendor_order.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
@@ -427,6 +400,7 @@ class VendorOrderViewSet(viewsets.ReadOnlyModelViewSet):
         return VendorOrder.objects.filter(vendor_shop__user=user).order_by('-created_at')
 
     @swagger_auto_schema(
+        tags=['orders'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             required=['status'],

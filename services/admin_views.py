@@ -89,6 +89,11 @@ class AdminProviderRatingViewSet(viewsets.ReadOnlyModelViewSet):
         operation_summary="List all Service Providers with Ratings"
     )
     def list(self, request, *args, **kwargs):
+        # Workaround for empty categories filter causing 400 Bad Request
+        if 'categories' in request.query_params and request.query_params['categories'] == '':
+            request.query_params._mutable = True
+            request.query_params.pop('categories')
+            request.query_params._mutable = False
         return super().list(request, *args, **kwargs)
 
     @swagger_auto_schema(

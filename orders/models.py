@@ -67,11 +67,50 @@ class Order(models.Model):
             self.order_number = f"ORD-{self.id:06d}"
             super().save(update_fields=['order_number'])
             
-        # --- COMMISSION LOGIC ---
+        # --- COMMISSION AND VENDOR ORDER LOGIC ---
         if self.status == 'APPROVED':
             from core.models import Commission
             from decimal import Decimal
-            from .models import OrderCommission
+            from .models import OrderCommission, VendorOrder, DeliveryCharge
+            
+            # --- VENDOR ORDER CREATION ---
+            if not self.vendor_orders.exists():
+                shop_items = {}
+                for item in self.items.all():
+                    if item.shop not in shop_items:
+                        shop_items[item.shop] = []
+                    shop_items[item.shop].append(item)
+
+                delivery_rates = DeliveryCharge.objects.first()
+
+                for shop, items in shop_items.items():
+                    subtotal = sum(i.quantity * i.unit_price for i in items)
+                    
+                    delivery_charge = Decimal('0.00')
+                    if delivery_rates:
+                        if shop.city_id and str(shop.city_id) == str(self.buyer_city_id):
+                            delivery_charge = Decimal(str(delivery_rates.inside_city))
+                        else:
+                            delivery_charge = Decimal(str(delivery_rates.outside_city))
+                            
+                    vendor_order = VendorOrder.objects.create(
+                        parent_order=self,
+                        vendor_shop=shop,
+                        subtotal_amount=subtotal,
+                        delivery_charge=delivery_charge,
+                        status='PROCESSING'
+                    )
+                    
+                    for item in items:
+                        item.vendor_order = vendor_order
+                        item.save(update_fields=['vendor_order'])
+                        
+                        # Deduct stock ONLY upon approval
+                        if item.product:
+                            item.product.stock_quantity -= item.quantity
+                            item.product.save(update_fields=['stock_quantity', 'updated_at'])
+            
+            # --- COMMISSION LOGIC ---
             
             for item in self.items.all():
                 commission_setting = None
@@ -95,8 +134,9 @@ class Order(models.Model):
                 new_applied_pct = commission_setting.percentage if commission_setting and commission_setting.percentage else Decimal('0.00')
                 new_applied_flat = commission_setting.flat if commission_setting and commission_setting.flat else Decimal('0.00')
                 
-                if order_comm.commission_amount != calculated_commission or order_comm.applied_percentage != new_applied_pct or order_comm.applied_flat != new_applied_flat:
-                    difference = calculated_commission - order_comm.commission_amount
+                if Decimal(str(order_comm.commission_amount)) != calculated_commission or Decimal(str(order_comm.applied_percentage)) != new_applied_pct or Decimal(str(order_comm.applied_flat)) != new_applied_flat:
+                    current_comm = Decimal(str(order_comm.commission_amount))
+                    difference = calculated_commission - current_comm
                     order_comm.commission_amount = calculated_commission
                     order_comm.applied_percentage = new_applied_pct
                     order_comm.applied_flat = new_applied_flat
@@ -105,7 +145,9 @@ class Order(models.Model):
                     if difference != Decimal('0.00') and item.shop and item.shop.user:
                         from wallets.models import Wallet, WalletTransaction
                         wallet, _ = Wallet.objects.get_or_create(user=item.shop.user)
-                        wallet.balance -= difference
+                        
+                        current_balance = Decimal(str(wallet.balance))
+                        wallet.balance = current_balance - difference
                         wallet.save(update_fields=['balance', 'updated_at'])
                         WalletTransaction.objects.create(
                             wallet=wallet,

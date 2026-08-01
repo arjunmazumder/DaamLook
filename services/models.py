@@ -178,8 +178,12 @@ class ServiceInvoice(models.Model):
             if self.booking.service_bill and self.booking.service_bill > 0:
                 self.base_amount = self.booking.service_bill
 
-        calculated_total = (self.base_amount or 0) + (self.extra_charges or 0) - (self.discount_amount or 0)
-        self.total_amount = max(0, calculated_total)
+        from decimal import Decimal
+        base = Decimal(str(self.base_amount or '0.00'))
+        extra = Decimal(str(self.extra_charges or '0.00'))
+        discount = Decimal(str(self.discount_amount or '0.00'))
+        calculated_total = base + extra - discount
+        self.total_amount = max(Decimal('0.00'), calculated_total)
 
         if self.payment_status == 'PAID' and not self.paid_at:
             from django.utils import timezone

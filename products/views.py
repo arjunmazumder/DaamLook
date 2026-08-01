@@ -3,7 +3,11 @@ from rest_framework import viewsets, permissions, exceptions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.filters import SearchFilter
+from rest_framework.parsers import MultiPartParser, FormParser
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from django.utils.decorators import method_decorator
 
 from .models import Category, SubCategory, Product, BulkPricingTier, ProductImage
 from .serializers import (
@@ -58,13 +62,25 @@ class IsVendorOrAdminOrReadOnly(permissions.BasePermission):
             return True
         return False
 
+images_param = openapi.Parameter(
+    'uploaded_images', 
+    openapi.IN_FORM, 
+    type=openapi.TYPE_ARRAY, 
+    items=openapi.Items(type=openapi.TYPE_FILE), 
+    description="Upload multiple images"
+)
+
+@method_decorator(name='create', decorator=swagger_auto_schema(manual_parameters=[images_param]))
+@method_decorator(name='update', decorator=swagger_auto_schema(manual_parameters=[images_param]))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(manual_parameters=[images_param]))
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsVendorOrAdminOrReadOnly]
+    parser_classes = (MultiPartParser, FormParser)
     filter_backends = [SearchFilter, DjangoFilterBackend]
-    search_fields = ['title', 'description']
-    filterset_fields = ['category', 'subcategory', 'product_type', 'shop', 'approval_status']
+    search_fields = ['title', 'description', 'size']
+    filterset_fields = ['category', 'subcategory', 'product_type', 'shop', 'approval_status', 'size']
 
     def get_queryset(self):
         if getattr(self, 'swagger_fake_view', False):
@@ -72,15 +88,25 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # Always return only APPROVED and active products for this endpoint
         if self.request.user.is_authenticated and (self.request.user.is_staff or self.request.user.is_superuser):
-            return Product.objects.filter(approval_status='APPROVED', is_active=True)
-        return Product.objects.filter(approval_status='APPROVED', is_active=True, shop__is_blocked=False)
+            return Product.objects.filter(approval_status='APPROVED', is_active=True).order_by('-created_at')
+        return Product.objects.filter(approval_status='APPROVED', is_active=True, shop__is_blocked=False).order_by('-created_at')
 
     def perform_create(self, serializer):
         user = self.request.user
         if user.is_staff or user.is_superuser:
-            serializer.save(approval_status='APPROVED')
+            product = serializer.save(approval_status='APPROVED')
         else:
-            serializer.save(approval_status='PENDING')
+            product = serializer.save(approval_status='PENDING')
+
+        uploaded_images = self.request.FILES.getlist('uploaded_images')
+        for image in uploaded_images:
+            ProductImage.objects.create(product=product, image=image)
+
+    def perform_update(self, serializer):
+        product = serializer.save()
+        uploaded_images = self.request.FILES.getlist('uploaded_images')
+        for image in uploaded_images:
+            ProductImage.objects.create(product=product, image=image)
 
     @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def pending(self, request):
@@ -185,6 +211,7 @@ class ProductImageViewSet(viewsets.ModelViewSet):
     queryset = ProductImage.objects.all()
     serializer_class = ProductImageSerializer
     permission_classes = [IsVendorOrAdminOrReadOnly]
+    parser_classes = (MultiPartParser, FormParser)
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['product']
 

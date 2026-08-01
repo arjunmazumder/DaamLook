@@ -59,6 +59,7 @@ class Product(models.Model):
     
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
+    size = models.CharField(max_length=50, blank=True, null=True, help_text="Size of the product (e.g., M, L, XL, 42, 44)")
     
     product_type = models.CharField(max_length=20, choices=PRODUCT_TYPE_CHOICES, default='RETAIL')
     stock_quantity = models.IntegerField(default=0)

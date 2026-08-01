@@ -93,8 +93,16 @@ from .models import ServiceCommission
 class ServiceCommissionSerializer(serializers.ModelSerializer):
     invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
     provider_shop_name = serializers.CharField(source='invoice.booking.provider.shop_name', read_only=True)
+    category_name = serializers.CharField(source='invoice.booking.category.name', read_only=True, default=None)
     invoice_total_amount = serializers.DecimalField(source='invoice.total_amount', max_digits=10, decimal_places=2, read_only=True)
+    applied_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = ServiceCommission
-        fields = ['id', 'invoice', 'invoice_number', 'provider_shop_name', 'invoice_total_amount', 'commission_amount', 'created_at', 'updated_at']
+        fields = ['id', 'invoice', 'invoice_number', 'provider_shop_name', 'category_name', 'invoice_total_amount', 'commission_amount', 'applied_percentage', 'created_at', 'updated_at']
+
+    def get_applied_percentage(self, obj):
+        if obj.invoice and obj.invoice.total_amount and obj.invoice.total_amount > 0:
+            pct = (obj.commission_amount / obj.invoice.total_amount) * 100
+            return round(float(pct), 2)
+        return 0.0

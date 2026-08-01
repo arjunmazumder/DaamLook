@@ -127,14 +127,40 @@ from django.db.models import Q
 
 
 
+from django.utils.decorators import method_decorator
+
+status_param = openapi.Parameter('status', openapi.IN_QUERY, description="Filter by booking status (e.g. PENDING, CONFIRMED, COMPLETED)", type=openapi.TYPE_STRING)
+payment_status_param = openapi.Parameter('payment_status', openapi.IN_QUERY, description="Filter by payment status (e.g. UNPAID, PAID)", type=openapi.TYPE_STRING)
+category_param = openapi.Parameter('category', openapi.IN_QUERY, description="Filter by service category ID", type=openapi.TYPE_INTEGER)
+scheduled_date_param = openapi.Parameter('scheduled_date', openapi.IN_QUERY, description="Filter by scheduled date (YYYY-MM-DD)", type=openapi.TYPE_STRING)
+
+@method_decorator(name='list', decorator=swagger_auto_schema(
+    tags=['services'],
+    operation_summary="List Service Bookings",
+    manual_parameters=[status_param, payment_status_param, category_param, scheduled_date_param]
+))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['services']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['services']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['services']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['services']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['services']))
 class ServiceBookingViewSet(viewsets.ModelViewSet):
     queryset = ServiceBooking.objects.all()
     serializer_class = ServiceBookingSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['status', 'payment_status', 'category', 'scheduled_date']
+
 
     def get_queryset(self):
-        # Users can only see their own bookings (as buyer or provider)
+        if getattr(self, 'swagger_fake_view', False):
+            return ServiceBooking.objects.none()
+
         user = self.request.user
+        if not user.is_authenticated:
+            return ServiceBooking.objects.none()
+
+        # Users can only see their own bookings (as buyer or provider)
         if hasattr(user, 'business_profile'):
             return ServiceBooking.objects.filter(Q(buyer=user) | Q(provider=user.business_profile))
         return ServiceBooking.objects.filter(buyer=user)
@@ -250,7 +276,8 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return ServiceInvoice.objects.none()
 
-        if user.is_staff or user.is_superuser:
+        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
+        if is_admin:
             return ServiceInvoice.objects.all()
             
         if hasattr(user, 'business_profile'):
@@ -263,7 +290,8 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
         booking = serializer.validated_data.get('booking')
         user = self.request.user
 
-        if not (user.is_staff or user.is_superuser):
+        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
+        if not is_admin:
             if not hasattr(user, 'business_profile') or booking.provider != user.business_profile:
                 raise exceptions.PermissionDenied("Only the assigned service provider can create an invoice for this booking.")
 
@@ -275,7 +303,7 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
 
         is_buyer = (invoice.booking.buyer == user)
         is_provider = (hasattr(user, 'business_profile') and invoice.booking.provider == user.business_profile)
-        is_admin = user.is_staff or user.is_superuser
+        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
 
         if not (is_buyer or is_provider or is_admin):
             raise exceptions.PermissionDenied("You are not authorized to update this invoice.")
@@ -285,7 +313,9 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['patch'], url_path='pay')
     def pay(self, request, pk=None):
         invoice = self.get_object()
-        if invoice.booking.buyer != request.user and not (request.user.is_staff or request.user.is_superuser):
+        user = request.user
+        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
+        if invoice.booking.buyer != user and not is_admin:
             return Response({"error": "Only the buyer can pay this invoice."}, status=403)
 
         if invoice.payment_status == 'PAID':

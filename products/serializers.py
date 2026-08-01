@@ -21,13 +21,7 @@ class ProductImageSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['created_at']
 
-    def validate(self, attrs):
-        product = attrs.get('product')
-        if product:
-            # If we are creating a new image, check the count
-            if not self.instance and product.images.count() >= 3:
-                raise serializers.ValidationError({"error": "A maximum of 3 images can be uploaded per product."})
-        return attrs
+
 
 class BulkPricingTierSerializer(serializers.ModelSerializer):
     class Meta:
