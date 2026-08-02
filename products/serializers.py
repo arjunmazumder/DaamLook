@@ -34,6 +34,16 @@ class ProductSerializer(serializers.ModelSerializer):
     after_discount_price = serializers.SerializerMethodField()
     shop_name = serializers.CharField(source='shop.shop_name', read_only=True)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
+            user = request.user
+            is_admin = user.is_staff or user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
+            if not is_admin:
+                self.fields['approval_status'].read_only = True
+                self.fields['rejection_reason'].read_only = True
+
     def get_after_discount_price(self, obj):
         from django.utils import timezone
         
@@ -64,7 +74,7 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = '__all__'
-        read_only_fields = ['approval_status', 'rejection_reason', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
@@ -90,10 +100,16 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         request = self.context.get('request')
-        if request and request.user:
+        if request and hasattr(request, 'user') and request.user and request.user.is_authenticated:
             user = request.user
-            if not (user.is_staff or user.is_superuser):
+            is_admin = user.is_staff or user.is_superuser or (hasattr(user, 'role') and user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
+            
+            if not is_admin:
                 shop = attrs.get('shop')
-                if not shop or shop.user != user:
-                    raise serializers.ValidationError({"shop": "You can only add products to your own shop."})
+                if self.instance:
+                    if shop and shop.user != user:
+                        raise serializers.ValidationError({"shop": "You can only assign products to your own shop."})
+                else:
+                    if not shop or shop.user != user:
+                        raise serializers.ValidationError({"shop": "You can only add products to your own shop."})
         return attrs

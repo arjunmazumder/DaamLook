@@ -9,6 +9,15 @@ from products.models import Product
 from .serializers import CartSerializer, CartItemSerializer, OrderSerializer, VendorOrderSerializer
 from .utils import calculate_product_unit_price
 
+def is_admin(user):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    if hasattr(user, 'role') and user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN':
+        return True
+    return False
+
 class CartViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -334,7 +343,8 @@ class AdminOrderViewSet(viewsets.ModelViewSet):
     """
     queryset = Order.objects.all().order_by('-created_at')
     serializer_class = OrderSerializer
-    permission_classes = [permissions.IsAdminUser]
+    from users.permissions import IsAdminOrSuperAdmin
+    permission_classes = [IsAdminOrSuperAdmin]
 
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
@@ -394,7 +404,7 @@ class VendorOrderViewSet(viewsets.ReadOnlyModelViewSet):
             return VendorOrder.objects.none()
         
         user = self.request.user
-        if user.is_staff or user.is_superuser:
+        if is_admin(user):
             return VendorOrder.objects.all().order_by('-created_at')
             
         return VendorOrder.objects.filter(vendor_shop__user=user).order_by('-created_at')
@@ -460,7 +470,7 @@ class OrderCommissionViewSet(viewsets.ReadOnlyModelViewSet):
         if not user.is_authenticated:
             return OrderCommission.objects.none()
 
-        if user.is_staff or user.is_superuser:
+        if is_admin(user):
             return OrderCommission.objects.all().order_by('-created_at')
             
         if hasattr(user, 'business_profile'):

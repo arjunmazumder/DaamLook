@@ -5,6 +5,15 @@ from drf_yasg import openapi
 from .models import ServiceCategory
 from .serializers import ServiceCategorySerializer
 
+def is_admin(user):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    if hasattr(user, 'role') and user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN':
+        return True
+    return False
+
 class ServiceCategoryViewSet(viewsets.ModelViewSet):
     queryset = ServiceCategory.objects.all()
     serializer_class = ServiceCategorySerializer
@@ -24,7 +33,7 @@ class ServiceProviderBusinessProfileViewSet(viewsets.ModelViewSet):
     filterset_fields = ['categories']
 
     def get_queryset(self):
-        if self.request.user.is_staff or self.request.user.is_superuser:
+        if is_admin(self.request.user):
             return ServiceProviderBusinessProfile.objects.all()
         return ServiceProviderBusinessProfile.objects.filter(is_blocked=False)
 
@@ -34,7 +43,7 @@ class RecentworkViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrSuperAdminOrServiceProvider]
 
     def get_queryset(self):
-        if self.request.user.is_staff or self.request.user.is_superuser:
+        if is_admin(self.request.user):
             return Recentwork.objects.all()
         return Recentwork.objects.filter(provider__is_blocked=False)
 
@@ -276,8 +285,7 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
         if not user.is_authenticated:
             return ServiceInvoice.objects.none()
 
-        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
-        if is_admin:
+        if is_admin(user):
             return ServiceInvoice.objects.all()
             
         if hasattr(user, 'business_profile'):
@@ -290,8 +298,7 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
         booking = serializer.validated_data.get('booking')
         user = self.request.user
 
-        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
-        if not is_admin:
+        if not is_admin(user):
             if not hasattr(user, 'business_profile') or booking.provider != user.business_profile:
                 raise exceptions.PermissionDenied("Only the assigned service provider can create an invoice for this booking.")
 
@@ -303,9 +310,7 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
 
         is_buyer = (invoice.booking.buyer == user)
         is_provider = (hasattr(user, 'business_profile') and invoice.booking.provider == user.business_profile)
-        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
-
-        if not (is_buyer or is_provider or is_admin):
+        if not (is_buyer or is_provider or is_admin(user)):
             raise exceptions.PermissionDenied("You are not authorized to update this invoice.")
 
         serializer.save()
@@ -314,8 +319,7 @@ class ServiceInvoiceViewSet(viewsets.ModelViewSet):
     def pay(self, request, pk=None):
         invoice = self.get_object()
         user = request.user
-        is_admin = user.is_staff or user.is_superuser or (user.role and user.role.name == 'ROLE' and user.role.value == 'ADMIN')
-        if invoice.booking.buyer != user and not is_admin:
+        if invoice.booking.buyer != user and not is_admin(user):
             return Response({"error": "Only the buyer can pay this invoice."}, status=403)
 
         if invoice.payment_status == 'PAID':
@@ -349,7 +353,7 @@ class ServiceCommissionViewSet(viewsets.ReadOnlyModelViewSet):
         if not user.is_authenticated:
             return ServiceCommission.objects.none()
 
-        if user.is_staff or user.is_superuser:
+        if is_admin(user):
             return ServiceCommission.objects.all().order_by('-created_at')
             
         if hasattr(user, 'business_profile'):

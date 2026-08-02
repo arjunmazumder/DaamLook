@@ -88,13 +88,13 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
             return None
             
         booking = invoice.booking
-        buyer = booking.user
+        buyer = booking.buyer
         provider = booking.provider
         
         return {
             'booking_id': booking.id,
             'invoice_number': invoice.invoice_number,
-            'service_name': booking.service.title if booking.service else 'Unknown',
+            'service_name': booking.category.name if booking.category else 'Unknown',
             'buyer': {
                 'id': buyer.id,
                 'name': buyer.full_name,
@@ -102,7 +102,7 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
             },
             'provider': {
                 'id': provider.id,
-                'provider_name': provider.provider_name if hasattr(provider, 'provider_name') else 'Unknown'
+                'provider_name': provider.shop_name if hasattr(provider, 'shop_name') else 'Unknown'
             },
             'total_bill': str(invoice.total_amount)
         }

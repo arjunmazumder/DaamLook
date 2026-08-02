@@ -159,7 +159,6 @@ class OrderCommissionSerializer(serializers.ModelSerializer):
         return {
             "id": shop.id,
             "shop_name": shop.shop_name,
-            "contact_number": shop.contact_number,
             "shop_address": shop.shop_address,
             "owner_phone": shop.user.phone_number if shop.user else None
         }
