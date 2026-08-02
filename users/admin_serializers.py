@@ -49,10 +49,11 @@ class RoleSerializer(serializers.ModelSerializer):
 
 class StaffSerializer(serializers.ModelSerializer):
     groups = RoleSerializer(many=True, read_only=True)
+    user_permissions = PermissionSerializer(many=True, read_only=True)
 
     class Meta:
         model = User
-        fields = ('id', 'phone_number', 'full_name', 'is_staff', 'is_superuser', 'is_active', 'groups', 'created_at')
+        fields = ('id', 'phone_number', 'full_name', 'is_staff', 'is_superuser', 'is_active', 'groups', 'user_permissions', 'created_at')
 
 class StaffCreateSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, style={'input_type': 'password'}, min_length=6)
@@ -63,13 +64,21 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         source='groups'
     )
+    permission_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+        source='user_permissions'
+    )
 
     class Meta:
         model = User
-        fields = ('phone_number', 'full_name', 'password', 'group_ids')
+        fields = ('phone_number', 'full_name', 'password', 'group_ids', 'permission_ids')
 
     def create(self, validated_data):
         groups = validated_data.pop('groups', [])
+        user_permissions = validated_data.pop('user_permissions', [])
         password = validated_data.pop('password')
         
         # Enforce staff rules
@@ -81,6 +90,8 @@ class StaffCreateSerializer(serializers.ModelSerializer):
         
         if groups:
             user.groups.set(groups)
+        if user_permissions:
+            user.user_permissions.set(user_permissions)
             
         return user
 
@@ -93,14 +104,26 @@ class StaffUpdateSerializer(serializers.ModelSerializer):
         write_only=True,
         source='groups'
     )
+    permission_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+        source='user_permissions'
+    )
 
     class Meta:
         model = User
-        fields = ('full_name', 'is_active', 'group_ids')
+        fields = ('full_name', 'is_active', 'group_ids', 'permission_ids')
 
     def update(self, instance, validated_data):
         groups = validated_data.pop('groups', None)
+        user_permissions = validated_data.pop('user_permissions', None)
         instance = super().update(instance, validated_data)
+        
         if groups is not None:
             instance.groups.set(groups)
+        if user_permissions is not None:
+            instance.user_permissions.set(user_permissions)
+            
         return instance
