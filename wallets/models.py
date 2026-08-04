@@ -47,6 +47,7 @@ class WalletTransaction(models.Model):
     
     order_commission = models.ForeignKey('orders.OrderCommission', on_delete=models.SET_NULL, null=True, blank=True, related_name='wallet_transactions')
     service_commission = models.ForeignKey('services.ServiceCommission', on_delete=models.SET_NULL, null=True, blank=True, related_name='wallet_transactions')
+    chat_session_commission = models.ForeignKey('orders.ChatSessionInvoiceCommission', on_delete=models.SET_NULL, null=True, blank=True, related_name='wallet_transactions')
     
     description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)

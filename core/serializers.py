@@ -57,3 +57,51 @@ class GlobalChatSessionSerializer(serializers.ModelSerializer):
         if request and hasattr(request, 'user'):
             return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
         return 0
+
+from orders.models import ChatSessionInvoice, ChatSessionInvoiceCommission
+from users.serializers import UserSerializer
+from products.serializers import CategorySerializer
+from vendors.serializers import ShopProfileSerializer
+from services.serializers import ServiceProviderBusinessProfileSerializer
+
+class ChatSessionInvoiceCommissionSerializer(serializers.ModelSerializer):
+    invoice_number = serializers.CharField(source='invoice.invoice_number', read_only=True)
+    vendor_phone = serializers.CharField(source='invoice.session.seller.phone_number', read_only=True)
+    invoice_details = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ChatSessionInvoiceCommission
+        fields = '__all__'
+
+    def get_invoice_details(self, obj):
+        return ChatSessionInvoiceSerializer(obj.invoice, context=self.context).data
+
+class ChatSessionInvoiceSerializer(serializers.ModelSerializer):
+    buyer_details = serializers.SerializerMethodField(read_only=True)
+    seller_details = serializers.SerializerMethodField(read_only=True)
+    category_details = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = ChatSessionInvoice
+        fields = '__all__'
+        read_only_fields = ['invoice_number', 'total_price', 'after_discount_price', 'status', 'created_at', 'updated_at']
+
+    def get_buyer_details(self, obj):
+        if obj.session and obj.session.buyer:
+            return UserSerializer(obj.session.buyer, context=self.context).data
+        return None
+
+    def get_seller_details(self, obj):
+        if obj.session and obj.session.seller:
+            if obj.session.chat_type == 'VENDOR' and hasattr(obj.session.seller, 'vendor_shop_profile'):
+                return ShopProfileSerializer(obj.session.seller.vendor_shop_profile, context=self.context).data
+            elif obj.session.chat_type == 'SERVICE' and hasattr(obj.session.seller, 'business_profile'):
+                return ServiceProviderBusinessProfileSerializer(obj.session.seller.business_profile, context=self.context).data
+            return UserSerializer(obj.session.seller, context=self.context).data
+        return None
+
+    def get_category_details(self, obj):
+        if obj.category:
+            return CategorySerializer(obj.category, context=self.context).data
+        return None
+

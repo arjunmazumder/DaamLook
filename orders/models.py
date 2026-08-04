@@ -215,7 +215,7 @@ class DeliveryCharge(models.Model):
     def __str__(self):
         return f"Inside City: {self.inside_city}, Outside City: {self.outside_city}"
 
-class OrderCommission(models.Model):
+class OrderCommission(models.Model): 
     order_item = models.OneToOneField('OrderItem', on_delete=models.CASCADE, related_name='commission_record')
     commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     applied_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
@@ -225,3 +225,119 @@ class OrderCommission(models.Model):
 
     def __str__(self):
         return f"Commission for Item {self.order_item.id} - {self.commission_amount}"
+
+class ChatSessionInvoice(models.Model):
+    STATUS_CHOICES = (
+        ('PENDING', 'Pending'),
+        ('CONFIRMED', 'Confirmed'),
+        ('REJECTED', 'Rejected'),
+    )
+
+    invoice_number = models.CharField(max_length=50, unique=True, blank=True)
+    session = models.ForeignKey('core.GlobalChatSession', on_delete=models.CASCADE, related_name='invoices')
+    category = models.ForeignKey('products.Category', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    product_name = models.CharField(max_length=255)
+    price_per_one_pice = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity = models.IntegerField(default=1)
+    
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    after_discount_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    
+    shipping_address = models.TextField(blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        from decimal import Decimal
+        
+        # Auto calculate total price
+        price = Decimal(str(self.price_per_one_pice or '0.00'))
+        qty = Decimal(str(self.quantity or '0'))
+        self.total_price = price * qty
+        
+        # Auto calculate after discount
+        discount = Decimal(str(self.discount_amount or '0.00'))
+        self.after_discount_price = max(Decimal('0.00'), self.total_price - discount)
+
+        super().save(*args, **kwargs)
+
+        # Generate invoice number if not set
+        if not self.invoice_number:
+            self.invoice_number = f"CINV-{self.id:06d}"
+            super().save(update_fields=['invoice_number'])
+
+        # If it's a new invoice, push a message to chat
+        if is_new:
+            from core.models import GlobalChatMessage
+            # Determine sender (usually the seller in the session)
+            GlobalChatMessage.objects.create(
+                session=self.session,
+                sender=self.session.seller,
+                message_type='INVOICE',
+                message=f"Invoice {self.invoice_number} created for {self.product_name}."
+            )
+
+        # Handle Commission on CONFIRM
+        if self.status == 'CONFIRMED':
+            from core.models import Commission
+            
+            commission_setting = Commission.objects.filter(category=self.category).first() if self.category else None
+            if not commission_setting:
+                commission_setting = Commission.objects.filter(category__isnull=True, servicecategory__isnull=True).first()
+                
+            calculated_commission = Decimal('0.00')
+            applied_pct = Decimal('0.00')
+            applied_flat = Decimal('0.00')
+            
+            if commission_setting:
+                if commission_setting.percentage and commission_setting.percentage > 0:
+                    calculated_commission = (self.after_discount_price * commission_setting.percentage) / Decimal('100.00')
+                    applied_pct = commission_setting.percentage
+                elif commission_setting.flat and commission_setting.flat > 0:
+                    calculated_commission = commission_setting.flat
+                    applied_flat = commission_setting.flat
+                    
+            chat_comm, created = ChatSessionInvoiceCommission.objects.get_or_create(invoice=self)
+            
+            if Decimal(str(chat_comm.commission_amount)) != calculated_commission:
+                difference = calculated_commission - Decimal(str(chat_comm.commission_amount))
+                chat_comm.commission_amount = calculated_commission
+                chat_comm.applied_percentage = applied_pct
+                chat_comm.applied_flat = applied_flat
+                chat_comm.save(update_fields=['commission_amount', 'applied_percentage', 'applied_flat', 'updated_at'])
+                
+                if difference != Decimal('0.00') and self.session and self.session.seller:
+                    from wallets.models import Wallet, WalletTransaction
+                    wallet, _ = Wallet.objects.get_or_create(user=self.session.seller)
+                    wallet.balance -= difference
+                    wallet.save(update_fields=['balance', 'updated_at'])
+                    
+                    WalletTransaction.objects.create(
+                        wallet=wallet,
+                        transaction_type='OUT' if difference > 0 else 'IN',
+                        amount=abs(difference),
+                        chat_session_commission=chat_comm,
+                        description=f"Commission adjustment for Chat Invoice {self.invoice_number}"
+                    )
+
+    def __str__(self):
+        return f"Chat Invoice {self.invoice_number}"
+
+class ChatSessionInvoiceCommission(models.Model):
+    invoice = models.OneToOneField(ChatSessionInvoice, on_delete=models.CASCADE, related_name='commission_record')
+    commission_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    applied_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
+    applied_flat = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Commission for {self.invoice.invoice_number} - {self.commission_amount}"
+

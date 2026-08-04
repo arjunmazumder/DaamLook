@@ -82,7 +82,6 @@ class GlobalChatConsumer(AsyncWebsocketConsumer):
             }
         )
 
-    # Receive message from room group
     async def chat_message(self, event):
         # Send message to WebSocket
         await self.send(text_data=json.dumps({
@@ -92,6 +91,13 @@ class GlobalChatConsumer(AsyncWebsocketConsumer):
             'message_type': event['message_type'],
             'sender_id': event['sender_id'],
             'timestamp': event['timestamp']
+        }, ensure_ascii=False))
+
+    async def invoice_update(self, event):
+        await self.send(text_data=json.dumps({
+            'type': 'invoice_update',
+            'invoice_id': event['invoice_id'],
+            'status': event['status']
         }, ensure_ascii=False))
 
     @database_sync_to_async

@@ -259,3 +259,139 @@ class InboxContactsView(APIView):
             })
             
         return Response(data, status=status.HTTP_200_OK)
+
+from rest_framework.decorators import action
+from orders.models import ChatSessionInvoice, ChatSessionInvoiceCommission
+from .serializers import ChatSessionInvoiceSerializer, ChatSessionInvoiceCommissionSerializer
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+class ChatSessionInvoiceViewSet(viewsets.ModelViewSet):
+    """
+    API for Vendors to create invoices inside a chat, and for Buyers to confirm or reject them.
+    """
+    queryset = ChatSessionInvoice.objects.all().order_by('-created_at')
+    serializer_class = ChatSessionInvoiceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ChatSessionInvoice.objects.none()
+        
+        user = self.request.user
+        if not user.is_authenticated:
+            return ChatSessionInvoice.objects.none()
+            
+        if user.is_superuser or getattr(user.role, 'name', '') in ['Admin', 'Super Admin']:
+            qs = ChatSessionInvoice.objects.all().order_by('-created_at')
+        else:
+            qs = ChatSessionInvoice.objects.filter(
+                Q(session__buyer=user) | Q(session__seller=user)
+            ).order_by('-created_at')
+
+        session_id = self.request.query_params.get('session_id')
+        if session_id:
+            qs = qs.filter(session__id=session_id)
+            
+        return qs
+
+    @swagger_auto_schema(
+        operation_summary="List Invoices",
+        manual_parameters=[
+            openapi.Parameter('session_id', openapi.IN_QUERY, description="Filter invoices by Chat Session ID", type=openapi.TYPE_INTEGER)
+        ],
+        tags=['Chatting System - Invoices']
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        session = serializer.validated_data.get('session')
+        user = self.request.user
+
+        if session.seller != user:
+            raise exceptions.PermissionDenied("Only the vendor (seller) can create an invoice for this session.")
+            
+        serializer.save()
+
+    @swagger_auto_schema(operation_summary="Confirm Chat Invoice (Buyer Only)", tags=['Chatting System - Invoices'])
+    @action(detail=True, methods=['patch'])
+    def confirm(self, request, pk=None):
+        invoice = self.get_object()
+        user = request.user
+        
+        if invoice.session.buyer != user:
+            return Response({"error": "Only the buyer can confirm this invoice."}, status=status.HTTP_403_FORBIDDEN)
+            
+        if invoice.status != 'PENDING':
+            return Response({"error": "Only pending invoices can be confirmed."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        invoice.status = 'CONFIRMED'
+        invoice.save()
+
+        # Notify via WebSocket
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'global_chat_{invoice.session.id}',
+            {
+                'type': 'invoice_update',
+                'invoice_id': invoice.id,
+                'status': invoice.status
+            }
+        )
+
+        return Response({"message": "Invoice confirmed successfully.", "status": invoice.status})
+
+    @swagger_auto_schema(operation_summary="Reject Chat Invoice (Buyer Only)", tags=['Chatting System - Invoices'])
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def reject(self, request, pk=None):
+        invoice = self.get_object()
+        if invoice.session.buyer != request.user:
+            return Response({"error": "Only the buyer can reject the invoice."}, status=status.HTTP_403_FORBIDDEN)
+            
+        if invoice.status != 'PENDING':
+            return Response({"error": "Only pending invoices can be rejected."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        invoice.status = 'REJECTED'
+        invoice.save()
+
+        # Notify via WebSocket
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'global_chat_{invoice.session.id}',
+            {
+                'type': 'invoice_update',
+                'invoice_id': invoice.id,
+                'status': invoice.status
+            }
+        )
+
+        return Response({"message": "Invoice rejected.", "status": invoice.status})
+
+@method_decorator(name='list', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['Chatting System - Invoices']))
+class ChatSessionInvoiceCommissionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    API to view commissions automatically generated from Chat Session Invoices.
+    """
+    queryset = ChatSessionInvoiceCommission.objects.all().order_by('-created_at')
+    serializer_class = ChatSessionInvoiceCommissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return ChatSessionInvoiceCommission.objects.none()
+            
+        user = self.request.user
+        if not user.is_authenticated:
+            return ChatSessionInvoiceCommission.objects.none()
+            
+        if user.is_superuser or getattr(user.role, 'name', '') in ['Admin', 'Super Admin']:
+            return ChatSessionInvoiceCommission.objects.all().order_by('-created_at')
+            
+        return ChatSessionInvoiceCommission.objects.filter(invoice__session__seller=user).order_by('-created_at')
