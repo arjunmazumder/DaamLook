@@ -131,11 +131,28 @@ class GlobalChatSessionViewSet(viewsets.ModelViewSet):
             qs = qs.filter(chat_type=chat_type.upper())
         return qs
 
-    def perform_create(self, serializer):
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
         seller = serializer.validated_data.get('seller')
-        if seller == self.request.user:
-            raise exceptions.ValidationError({"error": "You cannot chat with yourself."})
-        serializer.save(buyer=self.request.user)
+        chat_type = serializer.validated_data.get('chat_type')
+        buyer = request.user
+        
+        if seller == buyer:
+            return Response({"error": "You cannot chat with yourself."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Check if session already exists
+        session, created = GlobalChatSession.objects.get_or_create(
+            buyer=buyer,
+            seller=seller,
+            chat_type=chat_type,
+            defaults={'is_active': True}
+        )
+        
+        resp_serializer = self.get_serializer(session)
+        response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(resp_serializer.data, status=response_status)
 
 session_id_param = openapi.Parameter(
     'session_id', openapi.IN_QUERY, description="ID of the chat session to filter messages", type=openapi.TYPE_INTEGER

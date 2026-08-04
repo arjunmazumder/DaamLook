@@ -13,6 +13,9 @@ from users.models import User
 from orders.models import VendorOrder
 from services.models import ServiceBooking, ServiceProviderBusinessProfile
 from vendors.models import ShopProfile
+from .models import GlobalChatSession, GlobalChatMessage
+from .admin_serializers import AdminGlobalChatSessionSerializer, AdminGlobalChatSessionDetailSerializer
+from .serializers import GlobalChatMessageSerializer
 
 class BroadcastAnnouncementViewSet(viewsets.ModelViewSet):
     """
@@ -82,3 +85,62 @@ class AdminAnalyticsDashboardAPIView(APIView):
         }
         
         return Response(data)
+
+from django.utils.decorators import method_decorator
+
+@method_decorator(name='list', decorator=swagger_auto_schema(
+    tags=['Admin Panel'],
+    operation_summary="List all chat sessions",
+    manual_parameters=[
+        openapi.Parameter('chat_type', openapi.IN_QUERY, description="Filter sessions by type: VENDOR or SERVICE", type=openapi.TYPE_STRING)
+    ]
+))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(
+    tags=['Admin Panel'],
+    operation_summary="Get chat session details and all messages"
+))
+class AdminGlobalChatSessionViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Dedicated Admin API for viewing all chat sessions.
+    """
+    queryset = GlobalChatSession.objects.all().order_by('-updated_at')
+    serializer_class = AdminGlobalChatSessionSerializer
+    permission_classes = [IsAdminOrSuperAdmin]
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return AdminGlobalChatSessionDetailSerializer
+        return super().get_serializer_class()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chat_type = self.request.query_params.get('chat_type')
+        if chat_type:
+            qs = qs.filter(chat_type=chat_type.upper())
+        return qs
+
+@method_decorator(name='list', decorator=swagger_auto_schema(
+    tags=['Admin Panel'],
+    operation_summary="List messages in chat sessions",
+    manual_parameters=[
+        openapi.Parameter('session_id', openapi.IN_QUERY, description="ID of the chat session to filter messages", type=openapi.TYPE_INTEGER)
+    ]
+))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(
+    tags=['Admin Panel'],
+    operation_summary="Get specific chat message details"
+))
+class AdminGlobalChatMessageViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Dedicated Admin API for viewing messages in any chat session.
+    """
+    queryset = GlobalChatMessage.objects.all().order_by('-timestamp')
+    serializer_class = GlobalChatMessageSerializer
+    permission_classes = [IsAdminOrSuperAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        session_id = self.request.query_params.get('session_id')
+        if session_id:
+            qs = qs.filter(session_id=session_id)
+        return qs

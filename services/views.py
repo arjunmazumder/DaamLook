@@ -37,6 +37,48 @@ class ServiceProviderBusinessProfileViewSet(viewsets.ModelViewSet):
             return ServiceProviderBusinessProfile.objects.all()
         return ServiceProviderBusinessProfile.objects.filter(is_blocked=False)
 
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+
+class ProviderTotalEarnView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Get Provider Total Earnings",
+        operation_description="Returns total earnings, invoices, and bookings for the logged-in service provider."
+    )
+    def get(self, request):
+        user = request.user
+        
+        # Admin checking admin stats is not applicable here as it requires no ID. 
+        # This endpoint is specifically for the logged in provider.
+        if not hasattr(user, 'business_profile'):
+            return Response({"error": "You do not have a service provider profile."}, status=status.HTTP_403_FORBIDDEN)
+            
+        provider = user.business_profile
+        
+        # Total Bookings (Orders)
+        total_bookings = provider.received_bookings.count()
+        
+        # Total Invoices
+        from .models import ServiceInvoice
+        invoices = ServiceInvoice.objects.filter(booking__provider=provider)
+        total_invoices = invoices.count()
+        
+        # Total Earnings (sum of paid invoices)
+        from django.db.models import Sum
+        total_earnings = invoices.filter(payment_status='PAID').aggregate(Sum('total_amount'))['total_amount__sum'] or 0.0
+        
+        return Response({
+            "provider_id": provider.id,
+            "shop_name": provider.shop_name,
+            "total_bookings": total_bookings,
+            "total_invoices": total_invoices,
+            "total_earnings": float(total_earnings)
+        })
+
 class RecentworkViewSet(viewsets.ModelViewSet):
     queryset = Recentwork.objects.all()
     serializer_class = RecentworkSerializer

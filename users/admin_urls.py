@@ -4,7 +4,7 @@ from .admin_views import AdminLoginView, PermissionListView, RoleViewSet, StaffV
 from orders.admin_views import AdminProductOrderMonitoringViewSet
 from services.admin_views import AdminServiceBookingMonitoringViewSet, AdminProviderRatingViewSet
 from vendors.admin_views import AdminVendorRatingViewSet
-from core.admin_views import AdminAnalyticsDashboardAPIView, BroadcastAnnouncementViewSet
+from core.admin_views import AdminAnalyticsDashboardAPIView, BroadcastAnnouncementViewSet, AdminGlobalChatSessionViewSet, AdminGlobalChatMessageViewSet
 
 router = DefaultRouter()
 router.register(r'roles', RoleViewSet, basename='admin-roles')
@@ -15,6 +15,8 @@ router.register(r'ratings/vendors', AdminVendorRatingViewSet, basename='admin-ra
 router.register(r'ratings/service-providers', AdminProviderRatingViewSet, basename='admin-ratings-providers')
 
 router.register(r'broadcast', BroadcastAnnouncementViewSet, basename='admin-broadcast')
+router.register(r'chats/sessions', AdminGlobalChatSessionViewSet, basename='admin-chat-sessions')
+router.register(r'chats/messages', AdminGlobalChatMessageViewSet, basename='admin-chat-messages')
 
 urlpatterns = [
     path('login/', AdminLoginView.as_view(), name='admin-login'),

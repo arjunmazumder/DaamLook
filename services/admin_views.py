@@ -144,4 +144,31 @@ class AdminProviderRatingViewSet(viewsets.ReadOnlyModelViewSet):
         
         return Response(self.get_serializer(provider).data)
     
-
+    @swagger_auto_schema(
+        tags=['Admin Panel'],
+        operation_summary="Get Provider Stats",
+        operation_description="Returns total earnings, total invoices, and total bookings/orders for a specific service provider."
+    )
+    @action(detail=True, methods=['get'])
+    def stats(self, request, pk=None):
+        provider = self.get_object()
+        
+        # Total Bookings (Orders)
+        total_bookings = provider.received_bookings.count()
+        
+        # Total Invoices
+        from .models import ServiceInvoice
+        invoices = ServiceInvoice.objects.filter(booking__provider=provider)
+        total_invoices = invoices.count()
+        
+        # Total Earnings (sum of paid invoices)
+        from django.db.models import Sum
+        total_earnings = invoices.filter(payment_status='PAID').aggregate(Sum('total_amount'))['total_amount__sum'] or 0.0
+        
+        return Response({
+            "provider_id": provider.id,
+            "shop_name": provider.shop_name,
+            "total_bookings": total_bookings,
+            "total_invoices": total_invoices,
+            "total_earnings": float(total_earnings)
+        })

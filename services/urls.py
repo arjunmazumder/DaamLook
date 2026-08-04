@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ServiceCategoryViewSet, ServiceProviderBusinessProfileViewSet, FindNearbyProvidersView, ServiceBookingViewSet, ServiceProviderReviewViewSet, ServiceInvoiceViewSet, ServiceCommissionViewSet, RecentworkViewSet
+from .views import ServiceCategoryViewSet, ServiceProviderBusinessProfileViewSet, FindNearbyProvidersView, ServiceBookingViewSet, ServiceProviderReviewViewSet, ServiceInvoiceViewSet, ServiceCommissionViewSet, RecentworkViewSet, ProviderTotalEarnView
 
 router = DefaultRouter(trailing_slash=False)
 router.register(r'categories', ServiceCategoryViewSet, basename='service-category')
@@ -13,5 +13,6 @@ router.register(r'recent-works', RecentworkViewSet, basename='recent-work')
 
 urlpatterns = [
     path('nearby-providers/', FindNearbyProvidersView.as_view(), name='nearby-providers'),
+    path('provider/total/earn', ProviderTotalEarnView.as_view(), name='provider-total-earn'),
     path('', include(router.urls)),
 ]
