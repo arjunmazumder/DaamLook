@@ -10,8 +10,8 @@ from .models import BroadcastAnnouncement
 from .admin_serializers import BroadcastAnnouncementSerializer
 from users.permissions import IsAdminOrSuperAdmin
 from users.models import User
-from orders.models import VendorOrder
-from services.models import ServiceBooking, ServiceProviderBusinessProfile
+from orders.models import VendorOrder, OrderCommission, ChatSessionInvoiceCommission
+from services.models import ServiceBooking, ServiceProviderBusinessProfile, ServiceCommission
 from vendors.models import ShopProfile
 from .models import GlobalChatSession, GlobalChatMessage
 from .admin_serializers import AdminGlobalChatSessionSerializer, AdminGlobalChatSessionDetailSerializer
@@ -62,6 +62,26 @@ class AdminAnalyticsDashboardAPIView(APIView):
         top_vendors = ShopProfile.objects.order_by('-average_rating', '-total_reviews')[:5]
         top_providers = ServiceProviderBusinessProfile.objects.order_by('-average_rating', '-total_reviews')[:5]
 
+        # Commission Calculation
+        from django.utils import timezone
+        today = timezone.now().date()
+        this_month = today.month
+        this_year = today.year
+
+        def get_sum(qs):
+            res = qs.aggregate(total=Sum('commission_amount'))['total']
+            return float(res) if res else 0.0
+
+        total_commission = get_sum(OrderCommission.objects.all()) + get_sum(ServiceCommission.objects.all()) + get_sum(ChatSessionInvoiceCommission.objects.all())
+        
+        daily_commission = get_sum(OrderCommission.objects.filter(created_at__date=today)) + \
+                           get_sum(ServiceCommission.objects.filter(created_at__date=today)) + \
+                           get_sum(ChatSessionInvoiceCommission.objects.filter(created_at__date=today))
+                           
+        monthly_commission = get_sum(OrderCommission.objects.filter(created_at__year=this_year, created_at__month=this_month)) + \
+                             get_sum(ServiceCommission.objects.filter(created_at__year=this_year, created_at__month=this_month)) + \
+                             get_sum(ChatSessionInvoiceCommission.objects.filter(created_at__year=this_year, created_at__month=this_month))
+
         data = {
             "users": {
                 "total": total_users,
@@ -81,7 +101,12 @@ class AdminAnalyticsDashboardAPIView(APIView):
             ],
             "top_service_providers": [
                 {"id": p.id, "shop_name": p.shop_name, "rating": p.average_rating} for p in top_providers
-            ]
+            ],
+            "commissions": {
+                "daily_commission": round(daily_commission, 2),
+                "monthly_commission": round(monthly_commission, 2),
+                "total_commission": round(total_commission, 2)
+            }
         }
         
         return Response(data)
