@@ -185,6 +185,16 @@ class GlobalChatMessageViewSet(viewsets.ModelViewSet):
             qs = qs.filter(session_id=session_id)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        session_id = request.query_params.get('session_id')
+        if session_id and request.user.is_authenticated:
+            # When the user opens the chat and fetches messages, mark unread messages from the other user as read.
+            GlobalChatMessage.objects.filter(
+                session_id=session_id,
+                is_read=False
+            ).exclude(sender=request.user).update(is_read=True)
+        return super().list(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         session = serializer.validated_data.get('session')
         user = self.request.user
@@ -247,10 +257,45 @@ class InboxContactsView(APIView):
                 
             unread_count = session.messages.filter(is_read=False).exclude(sender=user).count()
             
+            # Explicit buyer name
+            buyer_name = getattr(session.buyer, 'full_name', '')
+            if not buyer_name:
+                buyer_name = getattr(session.buyer, 'phone_number', getattr(session.buyer, 'username', str(session.buyer.id)))
+                
+            # Explicit shop name and image
+            shop_name = ""
+            shop_image = None
+            if session.chat_type == 'VENDOR' and hasattr(session.seller, 'vendor_shop_profile'):
+                shop_name = getattr(session.seller.vendor_shop_profile, 'shop_name', '')
+                if session.seller.vendor_shop_profile.logo:
+                    shop_image = request.build_absolute_uri(session.seller.vendor_shop_profile.logo.url)
+            elif session.chat_type == 'SERVICE' and hasattr(session.seller, 'business_profile'):
+                shop_name = getattr(session.seller.business_profile, 'shop_name', '')
+
+            contact_name = getattr(contact_user, 'full_name', '')
+            if not contact_name:
+                contact_name = getattr(contact_user, 'phone_number', getattr(contact_user, 'username', str(contact_user.id)))
+                
+            contact_image = None
+
+            if is_buyer: # Contact is seller
+                if shop_name:
+                    contact_name = shop_name
+                if shop_image:
+                    contact_image = shop_image
+
+            if not contact_image and hasattr(contact_user, 'kyc_profile') and contact_user.kyc_profile.profile_img:
+                contact_image = request.build_absolute_uri(contact_user.kyc_profile.profile_img.url)
+            
             data.append({
                 "session_id": session.id,
                 "chat_type": session.chat_type,
+                "buyer_name": buyer_name,
+                "shop_name": shop_name,
+                "shop_image": shop_image,
                 "contact_id": contact_user.id,
+                "contact_name": contact_name,
+                "contact_image": contact_image,
                 "contact_phone": getattr(contact_user, 'phone_number', getattr(contact_user, 'username', str(contact_user.id))),
                 "contact_role": "SELLER" if is_buyer else "BUYER",
                 "updated_at": session.updated_at,
