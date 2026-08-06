@@ -457,3 +457,26 @@ class ChatSessionInvoiceCommissionViewSet(viewsets.ReadOnlyModelViewSet):
             return ChatSessionInvoiceCommission.objects.all().order_by('-created_at')
             
         return ChatSessionInvoiceCommission.objects.filter(invoice__session__seller=user).order_by('-created_at')
+
+from rest_framework.views import APIView
+from products.models import Category as ProductCategory
+from products.serializers import CategorySerializer as ProductCategorySerializer
+from services.models import ServiceCategory
+from services.serializers import ServiceCategorySerializer
+
+class AllCategoriesView(APIView):
+    permission_classes = []
+
+    @swagger_auto_schema(
+        operation_summary="Get All Categories",
+        operation_description="Returns both product and service categories in a single response.",
+        tags=['Core']
+    )
+    def get(self, request):
+        product_categories = ProductCategory.objects.all()
+        service_categories = ServiceCategory.objects.all()
+        
+        return Response({
+            "products": ProductCategorySerializer(product_categories, many=True, context={'request': request}).data,
+            "services": ServiceCategorySerializer(service_categories, many=True, context={'request': request}).data
+        })
