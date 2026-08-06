@@ -48,6 +48,8 @@ class GlobalChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self.accept()
+        # Automatically mark all unread messages as read when joining the chat!
+        await self.mark_messages_read(self.session_id, self.user)
 
     async def disconnect(self, close_code):
         if hasattr(self, 'room_group_name'):
@@ -60,6 +62,12 @@ class GlobalChatConsumer(AsyncWebsocketConsumer):
     # Receive message from WebSocket
     async def receive(self, text_data):
         text_data_json = json.loads(text_data)
+        
+        # If the frontend manually sends a mark_read event
+        if text_data_json.get('type') == 'mark_read':
+            await self.mark_messages_read(self.session_id, self.user)
+            return
+            
         message = text_data_json.get('message', '')
         message_type = text_data_json.get('message_type', 'TEXT')
 
@@ -124,3 +132,10 @@ class GlobalChatConsumer(AsyncWebsocketConsumer):
             message=message,
             message_type=message_type
         )
+
+    @database_sync_to_async
+    def mark_messages_read(self, session_id, user):
+        GlobalChatMessage.objects.filter(
+            session_id=session_id,
+            is_read=False
+        ).exclude(sender=user).update(is_read=True)

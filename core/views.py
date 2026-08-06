@@ -102,6 +102,7 @@ from .models import GlobalChatSession, GlobalChatMessage
 from .serializers import GlobalChatSessionSerializer, GlobalChatMessageSerializer
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from rest_framework.decorators import action
 
 chat_type_param = openapi.Parameter(
     'chat_type', openapi.IN_QUERY, description="Filter sessions by type: VENDOR or SERVICE", type=openapi.TYPE_STRING
@@ -153,6 +154,22 @@ class GlobalChatSessionViewSet(viewsets.ModelViewSet):
         resp_serializer = self.get_serializer(session)
         response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(resp_serializer.data, status=response_status)
+
+    @swagger_auto_schema(
+        operation_summary="Mark Chat Session as Read",
+        operation_description="Marks all unread messages from the other user in this session as read.",
+        tags=['Chatting System']
+    )
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def mark_read(self, request, pk=None):
+        session = self.get_object()
+        
+        # Verify user is part of the session
+        if request.user != session.buyer and request.user != session.seller:
+            return Response({"error": "You are not part of this chat session."}, status=status.HTTP_403_FORBIDDEN)
+            
+        updated_count = session.messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
+        return Response({"message": f"Successfully marked {updated_count} messages as read."}, status=status.HTTP_200_OK)
 
 session_id_param = openapi.Parameter(
     'session_id', openapi.IN_QUERY, description="ID of the chat session to filter messages", type=openapi.TYPE_INTEGER
