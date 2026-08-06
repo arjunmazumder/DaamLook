@@ -51,7 +51,7 @@ class UpdateCustomerLocationView(APIView):
     )
     def post(self, request):
         # Check if the user has a role and if it's a buyer
-        if not request.user.role or request.user.role.name.lower() not in ['buyer', 'buyers']:
+        if not request.user.role or request.user.role.value.lower() not in ['buyer', 'buyers']:
             return Response(
                 {"error": "Permission denied. Only buyers can update their location here."}, 
                 status=status.HTTP_403_FORBIDDEN
