@@ -471,12 +471,22 @@ class AllCategoriesView(APIView):
         operation_summary="Get All Categories",
         operation_description="Returns both product and service categories in a single response.",
         tags=['Core']
-    )
-    def get(self, request):
-        product_categories = ProductCategory.objects.all()
-        service_categories = ServiceCategory.objects.all()
-        
-        return Response({
-            "products": ProductCategorySerializer(product_categories, many=True, context={'request': request}).data,
-            "services": ServiceCategorySerializer(service_categories, many=True, context={'request': request}).data
-        })
+            if not buyer_name:
+                buyer_name = getattr(session.buyer, 'phone_number', getattr(session.buyer, 'username', str(session.buyer.id)))
+                
+            # Explicit shop name and image
+            shop_name = ""
+            shop_image = None
+            if session.chat_type == 'VENDOR' and hasattr(session.seller, 'vendor_shop_profile'):
+                shop_name = getattr(session.seller.vendor_shop_profile, 'shop_name', '')
+                if session.seller.vendor_shop_profile.logo:
+                    shop_image = request.build_absolute_uri(session.seller.vendor_shop_profile.logo.url)
+
+from .models import Policy
+from .serializers import PolicySerializer
+from rest_framework.permissions import AllowAny
+
+class PolicyViewSet(viewsets.ModelViewSet):
+    queryset = Policy.objects.all().order_by('-created_at')
+    serializer_class = PolicySerializer
+    permission_classes = [AllowAny]

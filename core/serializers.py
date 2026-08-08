@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ActiveUser, ActiveCustomer, Commission
+from .models import ActiveUser, ActiveCustomer, Commission, Policy
 
 class UpdateLocationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -105,3 +105,7 @@ class ChatSessionInvoiceSerializer(serializers.ModelSerializer):
             return CategorySerializer(obj.category, context=self.context).data
         return None
 
+class PolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Policy
+        fields = '__all__'

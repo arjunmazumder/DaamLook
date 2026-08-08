@@ -100,3 +100,15 @@ class GlobalChatMessage(models.Model):
         super().save(*args, **kwargs)
         # Touch the session to update its updated_at field for Inbox sorting
         self.session.save(update_fields=['updated_at'])
+
+class Policy(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Policies"
+
+    def __str__(self):
+        return self.title
