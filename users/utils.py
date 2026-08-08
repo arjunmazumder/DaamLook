@@ -6,12 +6,18 @@ from datetime import timedelta
 from django.utils import timezone
 from django.conf import settings
 
-def generate_otp():
+def generate_otp(phone_number=None):
+    if phone_number in ['+8801700000000', '01700000000']:
+        return '123456'
     return str(random.randint(100000, 999999))
 
 import requests
 
 def send_otp_sms(phone_number, otp_code):
+    if phone_number in ['+8801700000000', '01700000000']:
+        print(f"Demo account login requested. Skipping SMS for {phone_number}.")
+        return True
+
     if not settings.GREENWEB_SMS_TOKEN or settings.GREENWEB_SMS_TOKEN == 'your_token_here':
         # Mock sending SMS. In production, provide a valid GREENWEB_SMS_TOKEN
         print(f"\n--- SIMULATED SMS ---")

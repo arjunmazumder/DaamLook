@@ -82,7 +82,7 @@ class RegisterView(APIView):
             user = serializer.save()
             
             # Auto-generate and send OTP
-            otp_code = generate_otp()
+            otp_code = generate_otp(phone_number)
             expires_at = timezone.now() + timedelta(minutes=5)
             
             OTPVerification.objects.update_or_create(
@@ -227,7 +227,7 @@ class ForgotPasswordView(APIView):
                 # Delete existing unverified OTPs for this number
                 OTPVerification.objects.filter(phone_number=phone_number).delete()
                 
-                otp_code = generate_otp()
+                otp_code = generate_otp(phone_number)
                 from django.utils import timezone
                 expires_at = timezone.now() + timedelta(minutes=5)
                 OTPVerification.objects.create(phone_number=phone_number, otp_code=otp_code, expires_at=expires_at)
@@ -301,7 +301,7 @@ class SendOTPView(APIView):
         if serializer.is_valid():
             phone_number = serializer.validated_data['phone_number']
             
-            otp_code = generate_otp()
+            otp_code = generate_otp(phone_number)
             expires_at = timezone.now() + timedelta(minutes=5)
             
             otp_record, created = OTPVerification.objects.update_or_create(
@@ -594,7 +594,7 @@ class BuyerRegisterView(APIView):
             if User.objects.filter(phone_number=phone_number).exists():
                 return Response({'error': 'User with this phone number already exists.'}, status=status.HTTP_400_BAD_REQUEST)
                 
-            otp_code = generate_otp()
+            otp_code = generate_otp(phone_number)
             expires_at = timezone.now() + timedelta(minutes=5)
             
             OTPVerification.objects.update_or_create(
@@ -672,7 +672,7 @@ class BuyerLoginView(APIView):
             if not User.objects.filter(phone_number=phone_number).exists():
                 return Response({'error': 'User with this phone number does not exist.'}, status=status.HTTP_404_NOT_FOUND)
                 
-            otp_code = generate_otp()
+            otp_code = generate_otp(phone_number)
             expires_at = timezone.now() + timedelta(minutes=5)
             
             OTPVerification.objects.update_or_create(
