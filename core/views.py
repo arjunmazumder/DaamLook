@@ -485,6 +485,15 @@ from .models import Policy
 from .serializers import PolicySerializer
 from rest_framework.permissions import AllowAny
 
+from django.utils.decorators import method_decorator
+from drf_yasg.utils import swagger_auto_schema
+
+@method_decorator(name='list', decorator=swagger_auto_schema(tags=['Core']))
+@method_decorator(name='create', decorator=swagger_auto_schema(tags=['Core']))
+@method_decorator(name='retrieve', decorator=swagger_auto_schema(tags=['Core']))
+@method_decorator(name='update', decorator=swagger_auto_schema(tags=['Core']))
+@method_decorator(name='partial_update', decorator=swagger_auto_schema(tags=['Core']))
+@method_decorator(name='destroy', decorator=swagger_auto_schema(tags=['Core']))
 class PolicyViewSet(viewsets.ModelViewSet):
     queryset = Policy.objects.all().order_by('-created_at')
     serializer_class = PolicySerializer
