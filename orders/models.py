@@ -238,12 +238,8 @@ class ChatSessionInvoice(models.Model):
     category = models.ForeignKey('products.Category', on_delete=models.SET_NULL, null=True, blank=True)
     
     product_name = models.CharField(max_length=255)
-    price_per_one_pice = models.DecimalField(max_digits=10, decimal_places=2)
-    quantity = models.IntegerField(default=1)
     
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    after_discount_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     
     shipping_address = models.TextField(blank=True, null=True)
@@ -256,15 +252,6 @@ class ChatSessionInvoice(models.Model):
     def save(self, *args, **kwargs):
         is_new = self.pk is None
         from decimal import Decimal
-        
-        # Auto calculate total price
-        price = Decimal(str(self.price_per_one_pice or '0.00'))
-        qty = Decimal(str(self.quantity or '0'))
-        self.total_price = price * qty
-        
-        # Auto calculate after discount
-        discount = Decimal(str(self.discount_amount or '0.00'))
-        self.after_discount_price = max(Decimal('0.00'), self.total_price - discount)
 
         super().save(*args, **kwargs)
 
@@ -298,7 +285,7 @@ class ChatSessionInvoice(models.Model):
             
             if commission_setting:
                 if commission_setting.percentage and commission_setting.percentage > 0:
-                    calculated_commission = (self.after_discount_price * commission_setting.percentage) / Decimal('100.00')
+                    calculated_commission = (self.total_price * commission_setting.percentage) / Decimal('100.00')
                     applied_pct = commission_setting.percentage
                 elif commission_setting.flat and commission_setting.flat > 0:
                     calculated_commission = commission_setting.flat

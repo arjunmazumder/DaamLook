@@ -84,7 +84,7 @@ class ChatSessionInvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatSessionInvoice
         fields = '__all__'
-        read_only_fields = ['invoice_number', 'total_price', 'after_discount_price', 'status', 'created_at', 'updated_at']
+        read_only_fields = ['invoice_number', 'status', 'created_at', 'updated_at']
 
     def get_buyer_details(self, obj):
         if obj.session and obj.session.buyer:
