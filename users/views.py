@@ -775,3 +775,65 @@ class ShippingAddressView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except ShippingAddress.DoesNotExist:
             return Response({"detail": "Shipping address not found."}, status=status.HTTP_404_NOT_FOUND)
+
+class DeleteAccountSendOTPView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        tags=["Authentication & Onboarding"],
+        operation_summary="Delete Account - Send OTP",
+        operation_description="Send an OTP to the provided phone number to confirm account deletion.",
+        request_body=SendOTPSerializer,
+        responses={200: "OTP sent", 404: "User not found"}
+    )
+    def post(self, request):
+        serializer = SendOTPSerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data["phone_number"]
+            
+            if not User.objects.filter(phone_number=phone_number).exists():
+                return Response({"error": "User with this phone number does not exist."}, status=status.HTTP_404_NOT_FOUND)
+                
+            OTPVerification.objects.filter(phone_number=phone_number).delete()
+            otp_code = generate_otp(phone_number)
+            expires_at = timezone.now() + timedelta(minutes=5)
+            OTPVerification.objects.create(phone_number=phone_number, otp_code=otp_code, expires_at=expires_at)
+            
+            send_otp_sms(phone_number, otp_code)
+            
+            return Response({"status": "success", "message": "OTP sent successfully for account deletion."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DeleteAccountVerifyOTPView(APIView):
+    permission_classes = [AllowAny]
+
+    @swagger_auto_schema(
+        tags=["Authentication & Onboarding"],
+        operation_summary="Delete Account - Verify OTP",
+        operation_description="Verify OTP and permanently delete the account.",
+        request_body=VerifyOTPSerializer,
+        responses={200: "Account deleted successfully", 400: "Invalid OTP or user not found"}
+    )
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        if serializer.is_valid():
+            phone_number = serializer.validated_data["phone_number"]
+            otp_code = serializer.validated_data["otp_code"]
+            
+            try:
+                user = User.objects.get(phone_number=phone_number)
+            except User.DoesNotExist:
+                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+                
+            otp_record = OTPVerification.objects.filter(phone_number=phone_number).order_by("-created_at").first()
+            if not otp_record or otp_record.otp_code != otp_code:
+                return Response({"error": "Invalid OTP."}, status=status.HTTP_400_BAD_REQUEST)
+                
+            if otp_record.is_expired():
+                return Response({"error": "OTP has expired."}, status=status.HTTP_400_BAD_REQUEST)
+                
+            user.delete()
+            otp_record.delete()
+            
+            return Response({"message": "Account permanently deleted."}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

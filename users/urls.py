@@ -2,7 +2,8 @@ from django.urls import path
 from .views import (
     LoginView, RefreshTokenView, LogoutView, RegisterView, SendOTPView, 
     VerifyOTPView, RoleListView, ForgotPasswordView, ResetPasswordView,
-    BuyerRegisterView, BuyerRegisterVerifyView, BuyerLoginView, BuyerLoginVerifyView
+    BuyerRegisterView, BuyerRegisterVerifyView, BuyerLoginView, BuyerLoginVerifyView,
+    DeleteAccountSendOTPView, DeleteAccountVerifyOTPView
 )
 
 urlpatterns = [
@@ -15,6 +16,8 @@ urlpatterns = [
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     path('roles/', RoleListView.as_view(), name='roles'),
+    path('delete-account/', DeleteAccountSendOTPView.as_view(), name='delete-account'),
+    path('delete-account/verify-otp/', DeleteAccountVerifyOTPView.as_view(), name='delete-account-verify-otp'),
     
     # Buyer Passwordless Auth
     path('buyer/register/', BuyerRegisterView.as_view(), name='buyer-register'),
