@@ -498,3 +498,17 @@ class PolicyViewSet(viewsets.ModelViewSet):
     queryset = Policy.objects.all().order_by('-created_at')
     serializer_class = PolicySerializer
     permission_classes = [AllowAny]
+
+from .models import AboutUs
+from .serializers import AboutUsSerializer
+
+@method_decorator(name="list", decorator=swagger_auto_schema(tags=["Core"]))
+@method_decorator(name="create", decorator=swagger_auto_schema(tags=["Core"]))
+@method_decorator(name="retrieve", decorator=swagger_auto_schema(tags=["Core"]))
+@method_decorator(name="update", decorator=swagger_auto_schema(tags=["Core"]))
+@method_decorator(name="partial_update", decorator=swagger_auto_schema(tags=["Core"]))
+@method_decorator(name="destroy", decorator=swagger_auto_schema(tags=["Core"]))
+class AboutUsViewSet(viewsets.ModelViewSet):
+    queryset = AboutUs.objects.all().order_by("-created_at")
+    serializer_class = AboutUsSerializer
+    permission_classes = [AllowAny]

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ActiveUser, ActiveCustomer, Commission, Policy
+from .models import ActiveUser, ActiveCustomer, Commission, Policy, AboutUs
 
 class UpdateLocationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -99,7 +99,6 @@ class ChatSessionInvoiceSerializer(serializers.ModelSerializer):
                 return ServiceProviderBusinessProfileSerializer(obj.session.seller.business_profile, context=self.context).data
             return UserSerializer(obj.session.seller, context=self.context).data
         return None
-
     def get_category_details(self, obj):
         if obj.category:
             return CategorySerializer(obj.category, context=self.context).data
@@ -108,4 +107,9 @@ class ChatSessionInvoiceSerializer(serializers.ModelSerializer):
 class PolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = Policy
+        fields = '__all__'
+
+class AboutUsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AboutUs
         fields = '__all__'
